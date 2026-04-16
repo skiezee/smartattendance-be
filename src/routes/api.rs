@@ -1,5 +1,5 @@
 use actix_web::web;
-use crate::handlers::{attendance_handler, auth_handler, employee_handler, health_handler, leave_handler};
+use crate::handlers::{attendance_handler, auth_handler, employee_handler, health_handler, leave_handler, patrol_handler, shift_handler};
 
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -15,6 +15,15 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/employees", web::get().to(employee_handler::get_all_employees))
             .route("/leave", web::post().to(leave_handler::submit_leave))
             .route("/leave", web::get().to(leave_handler::get_leaves))
-            .route("/leave/status", web::put().to(leave_handler::update_leave_status)),
+            .route("/leave/status", web::put().to(leave_handler::update_leave_status))
+            .route("/patrol/incident", web::post().to(patrol_handler::submit_incident))
+            .route("/patrol/incidents", web::get().to(patrol_handler::get_all_incidents))
+            .route("/patrol/incidents/{nik}", web::get().to(patrol_handler::get_incidents_by_nik))
+            .route("/shift", web::post().to(shift_handler::create_shift))
+            .route("/shift/list", web::post().to(shift_handler::get_shifts))
+            .route("/shift/all", web::get().to(shift_handler::get_all_shifts))
+            .route("/shift/status", web::put().to(shift_handler::update_shift_status))
+            .route("/shift/stats/{nik}", web::get().to(shift_handler::get_shift_stats))
+            .route("/shift/{shift_id}", web::delete().to(shift_handler::delete_shift)),
     );
 }
