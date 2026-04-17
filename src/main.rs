@@ -7,12 +7,11 @@ mod services;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
-use surrealdb::engine::remote::ws::Ws;
-use surrealdb::opt::auth::Root;
-use surrealdb::Surreal;
-
 use crate::config::app_state::AppState;
 use crate::routes::api::init_routes;
+use surrealdb::engine::any::connect;
+use surrealdb::opt::auth::Root;
+use surrealdb::Surreal;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -24,7 +23,7 @@ async fn main() -> std::io::Result<()> {
     log::info!("Starting Smart Attendance Backend...");
 
     // Get environment variables
-    let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_string());
+    let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_string()).trim().to_string();
     let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
     let db_pass = std::env::var("DB_PASS").unwrap_or_else(|_| "root".to_string());
     let db_ns = std::env::var("DB_NS").unwrap_or_else(|_| "smartattendance".to_string());
@@ -33,14 +32,14 @@ async fn main() -> std::io::Result<()> {
     let server_addr = format!("0.0.0.0:{}", port);
 
     // Connect to SurrealDB
-    let connection_url = if db_host.contains("://") {
+    let connection_url = if db_host.starts_with("http") {
         db_host.clone()
     } else {
-        format!("ws://{}", db_host)
+        format!("https://{}", db_host)
     };
 
     log::info!("Connecting to SurrealDB on {}...", connection_url);
-    let db = Surreal::new::<Ws>(connection_url)
+    let db = connect(&connection_url)
         .await
         .expect("Failed to connect to SurrealDB");
 

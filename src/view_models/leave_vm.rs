@@ -66,7 +66,7 @@ impl LeaveViewModel {
             id, field_to_update
         );
 
-        let mut result = data
+        let _result = data
             .db
             .query(query)
             .bind(("status", status.clone()))

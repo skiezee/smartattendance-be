@@ -1,6 +1,6 @@
 use surrealdb::Surreal;
-use surrealdb::engine::remote::ws::Client;
+use surrealdb::engine::any::Any;
 
 pub struct AppState {
-    pub db: Surreal<Client>,
+    pub db: Surreal<Any>,
 }
