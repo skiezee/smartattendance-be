@@ -33,8 +33,14 @@ async fn main() -> std::io::Result<()> {
     let server_addr = format!("0.0.0.0:{}", port);
 
     // Connect to SurrealDB
-    log::info!("Connecting to SurrealDB on ws://{}...", db_host);
-    let db = Surreal::new::<Ws>(db_host)
+    let connection_url = if db_host.contains("://") {
+        db_host.clone()
+    } else {
+        format!("ws://{}", db_host)
+    };
+
+    log::info!("Connecting to SurrealDB on {}...", connection_url);
+    let db = Surreal::new::<Ws>(connection_url)
         .await
         .expect("Failed to connect to SurrealDB");
 
