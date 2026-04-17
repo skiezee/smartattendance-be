@@ -1,0 +1,10 @@
+target
+.git
+.env
+.env.example
+*.surql
+Dockerfile
+.dockerignore
+node_modules
+dist
+build

@@ -106,9 +106,9 @@ impl LeaveViewModel {
                                     // Spawn notification task so it doesn't block the HTTP response
                                     let token_clone = token.clone();
                                     actix_web::rt::spawn(async move {
-                                        // Replace with your actual Firebase Project ID
-                                        let project_id = "smart-attendance-eef71";
-                                        let _ = send_fcm_notification(project_id, &token_clone, &title, &body).await;
+                                        // Get Firebase Project ID from environment variable
+                                        let project_id_env = std::env::var("FIREBASE_PROJECT_ID").unwrap_or_else(|_| "smart-attendance-eef71".to_string());
+                                        let _ = send_fcm_notification(&project_id_env, &token_clone, &title, &body).await;
                                     });
                                 }
                             }

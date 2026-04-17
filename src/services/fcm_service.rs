@@ -11,7 +11,12 @@ pub async fn send_fcm_notification(
     title: &str,
     body: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let secret = yup_oauth2::read_service_account_key("config/firebase-service-account.json").await?;
+    let secret = if let Ok(json_content) = std::env::var("FIREBASE_SERVICE_ACCOUNT_JSON") {
+        serde_json::from_str(&json_content)?
+    } else {
+        let credentials_path = std::env::var("FIREBASE_CREDENTIALS_PATH").unwrap_or_else(|_| "config/firebase-service-account.json".to_string());
+        yup_oauth2::read_service_account_key(credentials_path).await?
+    };
     
     let authenticator = ServiceAccountAuthenticator::builder(secret).build().await?;
     
