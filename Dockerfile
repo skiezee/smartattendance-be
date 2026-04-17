@@ -26,10 +26,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
-COPY --from:builder /app/target/release/smartattendance_be .
+COPY --from=builder /app/target/release/smartattendance_be .
 
 # Copy config folder (optional but good for local/dev use)
-COPY --from:builder /app/config ./config
+COPY --from=builder /app/config ./config
 
 # Set default port
 ENV PORT=8080
