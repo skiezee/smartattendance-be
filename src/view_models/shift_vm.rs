@@ -140,14 +140,71 @@ impl ShiftViewModel {
         payload: web::Json<UpdateShiftStatusRequest>,
         data: &web::Data<AppState>,
     ) -> Result<ShiftResponse, String> {
-        let query = format!("UPDATE {} SET status = $status", payload.shift_id);
+        // Validate input
+        if payload.shift_id.trim().is_empty() {
+            return Err("Shift ID is required".to_string());
+        }
 
-        let _result = data
+        if payload.status.trim().is_empty() {
+            return Err("Status is required".to_string());
+        }
+
+        // Validate status value
+        let valid_statuses = ["SCHEDULED", "COMPLETED", "CANCELLED"];
+        if !valid_statuses.contains(&payload.status.as_str()) {
+            return Err(format!(
+                "Invalid status '{}'. Must be one of: {}",
+                payload.status,
+                valid_statuses.join(", ")
+            ));
+        }
+
+        // Validate shift_id format (should be like "shift_schedules:abc123")
+        if !payload.shift_id.starts_with("shift_schedules:") {
+            return Err("Invalid shift ID format. Must start with 'shift_schedules:'".to_string());
+        }
+
+        // Extract the ID part after ":"
+        let id_part = payload.shift_id.split(':').nth(1).unwrap_or("");
+        if id_part.is_empty() {
+            return Err("Invalid shift ID format. Missing ID part after ':'".to_string());
+        }
+
+        // Check if shift exists first to provide better error message
+        let check_query = "SELECT * FROM type::thing($id)";
+        let mut check_result = data
             .db
-            .query(query)
+            .query(check_query)
+            .bind(("id", payload.shift_id.clone()))
+            .await
+            .map_err(|e| format!("Failed to verify shift existence: {}", e))?;
+
+        let existing: Vec<ShiftSchedule> = check_result
+            .take(0)
+            .map_err(|e| format!("Failed to parse shift check result: {}", e))?;
+
+        if existing.is_empty() {
+            return Err(format!("Shift with ID '{}' not found", payload.shift_id));
+        }
+
+        // Update shift status using simple UPDATE query with type casting
+        let update_query = "UPDATE type::thing($id) SET status = $status";
+        let mut result = data
+            .db
+            .query(update_query)
+            .bind(("id", payload.shift_id.clone()))
             .bind(("status", payload.status.clone()))
             .await
-            .map_err(|e| format!("Failed to update shift status: {}", e))?;
+            .map_err(|e| format!("Failed to update shift status in database: {}", e))?;
+
+        // Check if update was successful
+        let updated_records: Vec<ShiftSchedule> = result
+            .take(0)
+            .map_err(|e| format!("Failed to parse update result: {}", e))?;
+
+        if updated_records.is_empty() {
+            return Err(format!("Failed to update shift status for '{}' (no records changed)", payload.shift_id));
+        }
 
         log::info!(
             "Shift status updated: {} to {}",
@@ -193,11 +250,12 @@ impl ShiftViewModel {
     }
 
     pub async fn delete_shift(shift_id: &str, data: &web::Data<AppState>) -> Result<ShiftResponse, String> {
-        let query = format!("DELETE {}", shift_id);
+        let query = "DELETE type::thing($id)";
 
         let _result = data
             .db
             .query(query)
+            .bind(("id", shift_id.to_string()))
             .await
             .map_err(|e| format!("Failed to delete shift: {}", e))?;
 

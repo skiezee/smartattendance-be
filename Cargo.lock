@@ -4121,6 +4121,7 @@ dependencies = [
  "env_logger",
  "log",
  "reqwest 0.13.2",
+ "rustls",
  "serde",
  "serde_json",
  "surrealdb",
