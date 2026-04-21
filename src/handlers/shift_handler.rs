@@ -77,10 +77,22 @@ pub async fn update_shift_status(
         Ok(res) => HttpResponse::Ok().json(res),
         Err(e) => {
             log::error!("Error updating shift status: {}", e);
-            HttpResponse::InternalServerError().json(json!({
-                "status": "error",
-                "message": e
-            }))
+            
+            // Return 400 for validation errors, 500 for other errors
+            if e.contains("is required") 
+                || e.contains("Invalid status") 
+                || e.contains("Invalid shift ID format") 
+                || e.contains("not found") {
+                HttpResponse::BadRequest().json(json!({
+                    "status": "error",
+                    "message": e
+                }))
+            } else {
+                HttpResponse::InternalServerError().json(json!({
+                    "status": "error",
+                    "message": e
+                }))
+            }
         }
     }
 }

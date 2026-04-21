@@ -20,6 +20,11 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize logger
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+    
+    // Fix for rustls 0.23 panic: manually install the crypto provider
+    // We use aws-lc-rs as enabled in Cargo.toml
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     log::info!("Starting Smart Attendance Backend...");
 
     // Get environment variables
@@ -32,10 +37,12 @@ async fn main() -> std::io::Result<()> {
     let server_addr = format!("0.0.0.0:{}", port);
 
     // Connect to SurrealDB
-    let connection_url = if db_host.starts_with("http") {
+    let connection_url = if db_host.starts_with("http") || db_host.starts_with("ws") {
         db_host.clone()
+    } else if db_host == "memory" {
+        "memory".to_string()
     } else {
-        format!("https://{}", db_host)
+        format!("wss://{}", db_host)
     };
 
     log::info!("Connecting to SurrealDB on {}...", connection_url);
