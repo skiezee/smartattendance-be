@@ -18,6 +18,9 @@ async fn main() -> std::io::Result<()> {
     // Load .env file
     dotenv::dotenv().ok();
 
+    // Set default crypto provider for rustls
+    rustls::crypto::ring::default_provider().install_default().ok();
+
     // Initialize logger
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
     
@@ -41,6 +44,8 @@ async fn main() -> std::io::Result<()> {
         db_host.clone()
     } else if db_host == "memory" {
         "memory".to_string()
+    } else if db_host.contains("127.0.0.1") || db_host.contains("localhost") {
+        format!("ws://{}", db_host)
     } else {
         format!("wss://{}", db_host)
     };
