@@ -21,8 +21,6 @@ async fn main() -> std::io::Result<()> {
     // Initialize logger
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
     
-    // Fix for rustls 0.23 panic: manually install the crypto provider
-    // We use aws-lc-rs as enabled in Cargo.toml
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     log::info!("Starting Smart Attendance Backend...");
