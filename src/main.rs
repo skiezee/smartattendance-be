@@ -11,7 +11,6 @@ use crate::config::app_state::AppState;
 use crate::routes::api::init_routes;
 use surrealdb::engine::any::connect;
 use surrealdb::opt::auth::Root;
-use surrealdb::Surreal;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
