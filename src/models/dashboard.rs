@@ -148,6 +148,7 @@ pub struct PatrolAnalytics {
     pub checkpoints: CheckpointStats,
     pub average_patrol_duration_minutes: f64,
     pub daily_patrol_trend: Vec<DailyPatrolTrend>,
+    pub patrol_records: Vec<PatrolRecord>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -171,6 +172,23 @@ pub struct DailyPatrolTrend {
     pub total_patrols: i64,
     pub completed: i64,
     pub incomplete: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PatrolRecord {
+    pub started_at: String,
+    pub employee_id: String,
+    pub employee_nik: String,
+    pub employee_name: String,
+    pub employee_department: String,
+    pub location_id: String,
+    pub location_name: String,
+    pub location_address: String,
+    pub status: String,
+    pub duration_minutes: Option<f64>,
+    pub checkpoints_total: i64,
+    pub checkpoints_visited: i64,
+    pub checkpoints_missed: i64,
 }
 
 // ─── Incident Analytics ───────────────────────────────────────────────────────

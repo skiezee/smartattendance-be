@@ -8,13 +8,10 @@ use crate::models::dashboard::*;
 pub struct DashboardViewModel;
 
 impl DashboardViewModel {
-    pub async fn get_dashboard_analytics(
-        start_date: Option<String>,
-        end_date: Option<String>,
-        data: &web::Data<AppState>,
-    ) -> Result<DashboardData, String> {
+    // Helper function to process date parameters
+    fn process_date_params(start_date: Option<String>, end_date: Option<String>) -> (String, String) {
         let start_date = start_date.unwrap_or_else(|| {
-            let date = Local::now() - chrono::Duration::days(30);
+            let date = Local::now() - chrono::Duration::days(1825);
             date.format("%Y-%m-%d").to_string()
         });
 
@@ -22,6 +19,16 @@ impl DashboardViewModel {
 
         let from = format!("{}T00:00:00Z", start_date);
         let to = format!("{}T23:59:59Z", end_date);
+
+        (from, to)
+    }
+
+    pub async fn get_dashboard_analytics(
+        start_date: Option<String>,
+        end_date: Option<String>,
+        data: &web::Data<AppState>,
+    ) -> Result<DashboardData, String> {
+        let (from, to) = Self::process_date_params(start_date, end_date);
 
         let overview = Self::get_overview(&from, &to, data).await?;
         let attendance_analytics = Self::get_attendance_analytics(&from, &to, data).await?;
@@ -38,6 +45,61 @@ impl DashboardViewModel {
             performance_analytics,
             location_analytics,
         })
+    }
+
+    // Individual analytics functions with dynamic date parameters
+    pub async fn get_overview_only(
+        start_date: Option<String>,
+        end_date: Option<String>,
+        data: &web::Data<AppState>,
+    ) -> Result<DashboardOverview, String> {
+        let (from, to) = Self::process_date_params(start_date, end_date);
+        Self::get_overview(&from, &to, data).await
+    }
+
+    pub async fn get_attendance_analytics_only(
+        start_date: Option<String>,
+        end_date: Option<String>,
+        data: &web::Data<AppState>,
+    ) -> Result<AttendanceAnalytics, String> {
+        let (from, to) = Self::process_date_params(start_date, end_date);
+        Self::get_attendance_analytics(&from, &to, data).await
+    }
+
+    pub async fn get_patrol_analytics_only(
+        start_date: Option<String>,
+        end_date: Option<String>,
+        data: &web::Data<AppState>,
+    ) -> Result<PatrolAnalytics, String> {
+        let (from, to) = Self::process_date_params(start_date, end_date);
+        Self::get_patrol_analytics(&from, &to, data).await
+    }
+
+    pub async fn get_incident_analytics_only(
+        start_date: Option<String>,
+        end_date: Option<String>,
+        data: &web::Data<AppState>,
+    ) -> Result<IncidentAnalytics, String> {
+        let (from, to) = Self::process_date_params(start_date, end_date);
+        Self::get_incident_analytics(&from, &to, data).await
+    }
+
+    pub async fn get_performance_analytics_only(
+        start_date: Option<String>,
+        end_date: Option<String>,
+        data: &web::Data<AppState>,
+    ) -> Result<PerformanceAnalytics, String> {
+        let (from, to) = Self::process_date_params(start_date, end_date);
+        Self::get_performance_analytics(&from, &to, data).await
+    }
+
+    pub async fn get_location_analytics_only(
+        start_date: Option<String>,
+        end_date: Option<String>,
+        data: &web::Data<AppState>,
+    ) -> Result<LocationAnalytics, String> {
+        let (from, to) = Self::process_date_params(start_date, end_date);
+        Self::get_location_analytics(&from, &to, data).await
     }
 
     // ─── Helper: id to string ────────────────────────────────────────────────
@@ -129,7 +191,7 @@ impl DashboardViewModel {
             .map_err(|e| format!("DB error overview: {}", e))?;
 
         let raw: Option<serde_json::Value> = result
-            .take(14) // RETURN is the last statement
+            .take(13) // RETURN is the last statement
             .map_err(|e| format!("Parse error overview: {}", e))?;
 
         let v = raw.unwrap_or_default();
@@ -192,13 +254,19 @@ impl DashboardViewModel {
             LET $late_raw = (
                 SELECT 
                     type::string(employee_id) AS employee_id,
-                    late_minutes,
-                    type::string(work_date) AS work_date
+
+                    employee_id.nik AS nik,
+                    employee_id.full_name AS full_name,
+                    employee_id.department_id.name AS department,
+
+                    late_minutes
+
                 FROM attendance_log
                 WHERE work_date >= $from AND work_date < $to
                     AND late_minutes > 0
                     AND employee_id != NONE
-                ORDER BY late_minutes DESC
+
+                FETCH employee_id, employee_id.department_id
             );
 
             RETURN {{
@@ -329,20 +397,24 @@ impl DashboardViewModel {
             None => return vec![],
         };
 
-        // Group by employee_id string
-        let mut map: HashMap<String, (i64, i64)> = HashMap::new(); // (late_count, total_late_minutes)
+        // Group by employee_id string, keeping employee details from first occurrence
+        let mut map: HashMap<String, (i64, i64, String, String, String)> = HashMap::new(); // (late_count, total_late_minutes, nik, full_name, department)
 
         for rec in records {
             let emp_id = Self::id_to_string(&rec["employee_id"]);
             let late_minutes = rec["late_minutes"].as_i64().unwrap_or(0);
-            let entry = map.entry(emp_id).or_insert((0, 0));
+            let nik = rec["nik"].as_str().unwrap_or("").to_string();
+            let full_name = rec["full_name"].as_str().unwrap_or("").to_string();
+            let department = rec["department"].as_str().unwrap_or("").to_string();
+            
+            let entry = map.entry(emp_id).or_insert((0, 0, nik, full_name, department));
             entry.0 += 1;
             entry.1 += late_minutes;
         }
 
         let mut users: Vec<LateUser> = map
             .into_iter()
-            .map(|(employee_id, (late_count, total_late_minutes))| {
+            .map(|(employee_id, (late_count, total_late_minutes, nik, full_name, department))| {
                 let avg_late_minutes = if late_count > 0 {
                     total_late_minutes as f64 / late_count as f64
                 } else {
@@ -350,9 +422,9 @@ impl DashboardViewModel {
                 };
                 LateUser {
                     employee_id,
-                    nik: String::new(),       // populated if FETCH available
-                    full_name: String::new(), // populated if FETCH available
-                    department: String::new(),
+                    nik,
+                    full_name,
+                    department,
                     late_count,
                     total_late_minutes,
                     avg_late_minutes,
@@ -417,12 +489,18 @@ impl DashboardViewModel {
                 SELECT
                     type::string(started_at) AS started_at,
                     type::string(employee_id) AS employee_id,
+                    employee_id.nik AS employee_nik,
+                    employee_id.full_name AS employee_name,
+                    employee_id.department_id.name AS employee_department,
                     type::string(location_id) AS location_id,
+                    location_id.name AS location_name,
+                    location_id.address AS location_address,
                     status, duration_minutes,
                     checkpoints_total, checkpoints_visited, checkpoints_missed
                 FROM patrol_session
                 WHERE started_at >= $from AND started_at < $to
                 ORDER BY started_at ASC
+                FETCH employee_id, employee_id.department_id, location_id
             );
 
             RETURN {{
@@ -446,7 +524,7 @@ impl DashboardViewModel {
             .map_err(|e| format!("DB error patrol: {}", e))?;
 
         let raw: Option<serde_json::Value> = result
-            .take(11)
+            .take(9)
             .map_err(|e| format!("Parse error patrol: {}", e))?;
 
         let v = raw.unwrap_or_default();
@@ -464,6 +542,8 @@ impl DashboardViewModel {
 
         let daily_patrol_trend =
             Self::build_daily_patrol_trend(v["patrol_trend_raw"].as_array());
+        
+        let patrol_records = Self::build_patrol_records(v["patrol_trend_raw"].as_array());
 
         Ok(PatrolAnalytics {
             completion: PatrolCompletion {
@@ -479,6 +559,7 @@ impl DashboardViewModel {
             },
             average_patrol_duration_minutes: v["avg_duration"].as_f64().unwrap_or(0.0),
             daily_patrol_trend,
+            patrol_records,
         })
     }
 
@@ -526,6 +607,32 @@ impl DashboardViewModel {
 
         trend.sort_by(|a, b| a.date.cmp(&b.date));
         trend
+    }
+
+    fn build_patrol_records(raw: Option<&Vec<serde_json::Value>>) -> Vec<PatrolRecord> {
+        let records = match raw {
+            Some(r) => r,
+            None => return vec![],
+        };
+
+        records
+            .iter()
+            .map(|rec| PatrolRecord {
+                started_at: rec["started_at"].as_str().unwrap_or("").to_string(),
+                employee_id: Self::id_to_string(&rec["employee_id"]),
+                employee_nik: rec["employee_nik"].as_str().unwrap_or("").to_string(),
+                employee_name: rec["employee_name"].as_str().unwrap_or("").to_string(),
+                employee_department: rec["employee_department"].as_str().unwrap_or("").to_string(),
+                location_id: Self::id_to_string(&rec["location_id"]),
+                location_name: rec["location_name"].as_str().unwrap_or("").to_string(),
+                location_address: rec["location_address"].as_str().unwrap_or("").to_string(),
+                status: rec["status"].as_str().unwrap_or("").to_string(),
+                duration_minutes: rec["duration_minutes"].as_f64(),
+                checkpoints_total: rec["checkpoints_total"].as_i64().unwrap_or(0),
+                checkpoints_visited: rec["checkpoints_visited"].as_i64().unwrap_or(0),
+                checkpoints_missed: rec["checkpoints_missed"].as_i64().unwrap_or(0),
+            })
+            .collect()
     }
 
     // ─── Incident Analytics ───────────────────────────────────────────────────
@@ -759,7 +866,9 @@ impl DashboardViewModel {
             );
             LET $present_per_emp = (
                 SELECT type::string(employee_id) AS employee_id, count() AS present_days
-                FROM attendance_log ... GROUP BY employee_id
+                FROM attendance_log
+                WHERE work_date >= $from AND work_date < $to AND status = 'present'
+                GROUP BY employee_id
             );
 
             LET $absent_per_emp = (
@@ -810,7 +919,7 @@ impl DashboardViewModel {
             .map_err(|e| format!("DB error performance: {}", e))?;
 
         let raw: Option<serde_json::Value> = result
-            .take(9)
+            .take(8)
             .map_err(|e| format!("Parse error performance: {}", e))?;
 
         let v = raw.unwrap_or_default();
@@ -968,7 +1077,7 @@ impl DashboardViewModel {
             .map_err(|e| format!("DB error location: {}", e))?;
 
         let raw: Option<serde_json::Value> = result
-            .take(7)
+            .take(6)
             .map_err(|e| format!("Parse error location: {}", e))?;
 
         let v = raw.unwrap_or_default();
@@ -1050,15 +1159,16 @@ impl DashboardViewModel {
         // incidents_per_site
         let incidents_per_site = all_locations
             .iter()
-            .filter_map(|loc| {
+            .map(|loc| {
                 let loc_id = Self::id_to_string(&loc["id"]);
-                incident_counts.get(&loc_id).map(|(total, high)| SiteIncidents {
+                let (total, high) = incident_counts.get(&loc_id).copied().unwrap_or((0, 0));
+                SiteIncidents {
                     location_name: loc["name"].as_str().unwrap_or("").to_string(),
                     latitude: loc["latitude"].as_f64().unwrap_or(0.0),
                     longitude: loc["longitude"].as_f64().unwrap_or(0.0),
-                    incident_count: *total,
-                    high_severity_count: *high,
-                })
+                    incident_count: total,
+                    high_severity_count: high,
+                }
             })
             .collect();
 

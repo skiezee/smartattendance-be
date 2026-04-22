@@ -34,17 +34,17 @@ pub async fn get_overview_only(
     query: web::Query<DateRangeRequest>,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    match DashboardViewModel::get_dashboard_analytics(
+    match DashboardViewModel::get_overview_only(
         query.start_date.clone(),
         query.end_date.clone(),
         &data,
     )
     .await
     {
-        Ok(dashboard_data) => HttpResponse::Ok().json(json!({
+        Ok(overview) => HttpResponse::Ok().json(json!({
             "status": "success",
             "data": {
-                "overview": dashboard_data.overview
+                "overview": overview
             }
         })),
         Err(e) => {
@@ -61,17 +61,17 @@ pub async fn get_attendance_analytics(
     query: web::Query<DateRangeRequest>,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    match DashboardViewModel::get_dashboard_analytics(
+    match DashboardViewModel::get_attendance_analytics_only(
         query.start_date.clone(),
         query.end_date.clone(),
         &data,
     )
     .await
     {
-        Ok(dashboard_data) => HttpResponse::Ok().json(json!({
+        Ok(attendance_analytics) => HttpResponse::Ok().json(json!({
             "status": "success",
             "data": {
-                "attendance_analytics": dashboard_data.attendance_analytics
+                "attendance_analytics": attendance_analytics
             }
         })),
         Err(e) => {
@@ -88,17 +88,17 @@ pub async fn get_patrol_analytics(
     query: web::Query<DateRangeRequest>,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    match DashboardViewModel::get_dashboard_analytics(
+    match DashboardViewModel::get_patrol_analytics_only(
         query.start_date.clone(),
         query.end_date.clone(),
         &data,
     )
     .await
     {
-        Ok(dashboard_data) => HttpResponse::Ok().json(json!({
+        Ok(patrol_analytics) => HttpResponse::Ok().json(json!({
             "status": "success",
             "data": {
-                "patrol_analytics": dashboard_data.patrol_analytics
+                "patrol_analytics": patrol_analytics
             }
         })),
         Err(e) => {
@@ -115,17 +115,17 @@ pub async fn get_incident_analytics(
     query: web::Query<DateRangeRequest>,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    match DashboardViewModel::get_dashboard_analytics(
+    match DashboardViewModel::get_incident_analytics_only(
         query.start_date.clone(),
         query.end_date.clone(),
         &data,
     )
     .await
     {
-        Ok(dashboard_data) => HttpResponse::Ok().json(json!({
+        Ok(incident_analytics) => HttpResponse::Ok().json(json!({
             "status": "success",
             "data": {
-                "incident_analytics": dashboard_data.incident_analytics
+                "incident_analytics": incident_analytics
             }
         })),
         Err(e) => {
@@ -142,17 +142,17 @@ pub async fn get_performance_analytics(
     query: web::Query<DateRangeRequest>,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    match DashboardViewModel::get_dashboard_analytics(
+    match DashboardViewModel::get_performance_analytics_only(
         query.start_date.clone(),
         query.end_date.clone(),
         &data,
     )
     .await
     {
-        Ok(dashboard_data) => HttpResponse::Ok().json(json!({
+        Ok(performance_analytics) => HttpResponse::Ok().json(json!({
             "status": "success",
             "data": {
-                "performance_analytics": dashboard_data.performance_analytics
+                "performance_analytics": performance_analytics
             }
         })),
         Err(e) => {
@@ -169,17 +169,17 @@ pub async fn get_location_analytics(
     query: web::Query<DateRangeRequest>,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    match DashboardViewModel::get_dashboard_analytics(
+    match DashboardViewModel::get_location_analytics_only(
         query.start_date.clone(),
         query.end_date.clone(),
         &data,
     )
     .await
     {
-        Ok(dashboard_data) => HttpResponse::Ok().json(json!({
+        Ok(location_analytics) => HttpResponse::Ok().json(json!({
             "status": "success",
             "data": {
-                "location_analytics": dashboard_data.location_analytics
+                "location_analytics": location_analytics
             }
         })),
         Err(e) => {

@@ -70,13 +70,19 @@ async fn main() -> std::io::Result<()> {
     log::info!("Starting Actix Web server on http://{}", server_addr);
 
     HttpServer::new(move || {
-        let cors = Cors::permissive(); // Setup basic CORS for development
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header()
+            .supports_credentials()
+            .max_age(3600);
 
         App::new()
             .wrap(cors)
             .app_data(app_state.clone())
             .configure(init_routes)
     })
+
     .bind(server_addr)?
     .run()
     .await
