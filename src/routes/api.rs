@@ -1,5 +1,5 @@
 use actix_web::web;
-use crate::handlers::{attendance_handler, auth_handler, employee_handler, health_handler, leave_handler, patrol_handler, shift_handler};
+use crate::handlers::{attendance_handler, auth_handler, dashboard_handler, employee_handler, health_handler, leave_handler, patrol_handler, shift_handler};
 
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -24,6 +24,14 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/shift/all", web::get().to(shift_handler::get_all_shifts))
             .route("/shift/status", web::put().to(shift_handler::update_shift_status))
             .route("/shift/stats/{nik}", web::get().to(shift_handler::get_shift_stats))
-            .route("/shift/{shift_id}", web::delete().to(shift_handler::delete_shift)),
+            .route("/shift/{shift_id}", web::delete().to(shift_handler::delete_shift))
+            // Dashboard Analytics Routes
+            .route("/dashboard/analytics", web::get().to(dashboard_handler::get_dashboard_analytics))
+            .route("/dashboard/overview", web::get().to(dashboard_handler::get_overview_only))
+            .route("/dashboard/attendance", web::get().to(dashboard_handler::get_attendance_analytics))
+            .route("/dashboard/patrol", web::get().to(dashboard_handler::get_patrol_analytics))
+            .route("/dashboard/incidents", web::get().to(dashboard_handler::get_incident_analytics))
+            .route("/dashboard/performance", web::get().to(dashboard_handler::get_performance_analytics))
+            .route("/dashboard/locations", web::get().to(dashboard_handler::get_location_analytics)),
     );
 }
