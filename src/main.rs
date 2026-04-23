@@ -11,7 +11,6 @@ use crate::config::app_state::AppState;
 use crate::routes::api::init_routes;
 use surrealdb::engine::any::connect;
 use surrealdb::opt::auth::Root;
-use surrealdb::Surreal;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -21,8 +20,6 @@ async fn main() -> std::io::Result<()> {
     // Initialize logger
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
     
-    // Fix for rustls 0.23 panic: manually install the crypto provider
-    // We use aws-lc-rs as enabled in Cargo.toml
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     log::info!("Starting Smart Attendance Backend...");
@@ -73,13 +70,19 @@ async fn main() -> std::io::Result<()> {
     log::info!("Starting Actix Web server on http://{}", server_addr);
 
     HttpServer::new(move || {
-        let cors = Cors::permissive(); // Setup basic CORS for development
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header()
+            .supports_credentials()
+            .max_age(3600);
 
         App::new()
             .wrap(cors)
             .app_data(app_state.clone())
             .configure(init_routes)
     })
+
     .bind(server_addr)?
     .run()
     .await
