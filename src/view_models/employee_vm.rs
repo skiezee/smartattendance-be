@@ -10,12 +10,13 @@ impl EmployeeViewModel {
     ) -> Result<Vec<EmployeeResponse>, String> {
         let result = data
             .db
-            .query("SELECT id, nik, full_name, email, role, department, status, join_date FROM employee ORDER BY join_date DESC")
+            .query("SELECT * FROM employees ORDER BY created_at DESC")
             .await;
 
         match result {
             Ok(mut res) => {
                 let employees: Vec<EmployeeResponse> = res.take(0).unwrap_or_default();
+                log::info!("Fetched {} employees from database", employees.len());
                 Ok(employees)
             }
             Err(e) => {
