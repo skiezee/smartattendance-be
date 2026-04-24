@@ -98,6 +98,7 @@ pub struct PatrolAssignment {
     pub id: Option<Thing>,
     #[serde(default = "default_assignee_type")]
     pub assignee_type: String, // "individual", "group"
+    #[serde(alias = "employee_id")]
     pub assignee_id: Thing,    // Links to employee:id or group:id
     pub start_time: String,
     pub end_time: String,

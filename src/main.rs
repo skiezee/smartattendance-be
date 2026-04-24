@@ -22,8 +22,6 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize logger
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
-    
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     log::info!("Starting Smart Attendance Backend...");
 
