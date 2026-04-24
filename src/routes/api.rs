@@ -1,5 +1,5 @@
 use actix_web::web;
-use crate::handlers::{attendance_handler, auth_handler, dashboard_handler, employee_handler, health_handler, leave_handler, patrol_handler, shift_handler};
+use crate::handlers::{attendance_handler, auth_handler, dashboard_handler, employee_handler, health_handler, leave_handler, location_handler, patrol_handler, shift_handler, wifi_handler};
 
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -13,6 +13,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/attendance/clock-in", web::post().to(attendance_handler::clock_in))
             .route("/attendance/logs", web::get().to(attendance_handler::get_all_attendances))
             .route("/employees", web::get().to(employee_handler::get_all_employees))
+            .route("/employees", web::post().to(employee_handler::create_employee))
+            .route("/employees/{nik}", web::get().to(employee_handler::get_employee_by_nik))
+            .route("/employees/{nik}", web::put().to(employee_handler::update_employee))
+            .route("/employees/{nik}", web::delete().to(employee_handler::delete_employee))
             .route("/leave", web::post().to(leave_handler::submit_leave))
             .route("/leave", web::get().to(leave_handler::get_leaves))
             .route("/leave/status", web::put().to(leave_handler::update_leave_status))
@@ -42,6 +46,20 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/dashboard/patrol", web::get().to(dashboard_handler::get_patrol_analytics))
             .route("/dashboard/incidents", web::get().to(dashboard_handler::get_incident_analytics))
             .route("/dashboard/performance", web::get().to(dashboard_handler::get_performance_analytics))
-            .route("/dashboard/locations", web::get().to(dashboard_handler::get_location_analytics)),
+            .route("/dashboard/locations", web::get().to(dashboard_handler::get_location_analytics))
+            // WiFi Validation Routes
+            .route("/wifi-settings", web::get().to(wifi_handler::get_wifi_settings))
+            .route("/wifi-settings/all", web::get().to(wifi_handler::get_all_wifi_settings))
+            .route("/wifi-settings/validate", web::post().to(wifi_handler::validate_wifi_ssid))
+            .route("/wifi-settings", web::post().to(wifi_handler::create_wifi_setting))
+            .route("/wifi-settings/{wifi_id}", web::patch().to(wifi_handler::update_wifi_setting))
+            .route("/wifi-settings/{wifi_id}", web::delete().to(wifi_handler::delete_wifi_setting))
+            // Location Boundary Routes
+            .route("/location-boundaries", web::get().to(location_handler::get_location_boundaries))
+            .route("/location-boundaries/all", web::get().to(location_handler::get_all_location_boundaries))
+            .route("/location-boundaries/validate", web::post().to(location_handler::validate_location))
+            .route("/location-boundaries", web::post().to(location_handler::create_location_boundary))
+            .route("/location-boundaries/{location_id}", web::patch().to(location_handler::update_location_boundary))
+            .route("/location-boundaries/{location_id}", web::delete().to(location_handler::delete_location_boundary)),
     );
 }
