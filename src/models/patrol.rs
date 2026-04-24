@@ -39,11 +39,29 @@ pub struct GetIncidentsResponse {
     pub data: Vec<PatrolIncident>,
 }
 
+// --- Area Models ---
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PatrolArea {
+    pub id: Option<Thing>,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CreateAreaRequest {
+    pub name: String,
+    pub description: Option<String>,
+}
+
 // --- Checkpoint Models ---
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Checkpoint {
     pub id: Option<Thing>,
+    pub area_id: Option<Thing>, // Reference to patrol_area
     pub name: String,
     pub qr_code_id: String,
     pub latitude: f64,
@@ -55,6 +73,7 @@ pub struct Checkpoint {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CreateCheckpointRequest {
+    pub area_id: Option<String>,
     pub name: String,
     pub qr_code_id: String,
     pub latitude: f64,
@@ -64,6 +83,7 @@ pub struct CreateCheckpointRequest {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UpdateCheckpointRequest {
+    pub area_id: Option<String>,
     pub name: Option<String>,
     pub qr_code_id: Option<String>,
     pub latitude: Option<f64>,
@@ -76,21 +96,31 @@ pub struct UpdateCheckpointRequest {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PatrolAssignment {
     pub id: Option<Thing>,
-    pub employee_id: Thing,
+    #[serde(default = "default_assignee_type")]
+    pub assignee_type: String, // "individual", "group"
+    pub assignee_id: Thing,    // Links to employee:id or group:id
     pub start_time: String,
     pub end_time: String,
     pub checkpoints: Vec<Thing>,
+    #[serde(default = "default_status")]
     pub status: String, // "scheduled", "in_progress", "completed"
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
 
-/// Safe serializable response — uses plain String IDs instead of Thing enum
-/// to avoid serde_json::Value serialization errors from SurrealDB internals.
+fn default_assignee_type() -> String {
+    "individual".to_string()
+}
+
+fn default_status() -> String {
+    "scheduled".to_string()
+}
+
 #[derive(Serialize, Debug)]
 pub struct PatrolAssignmentResponse {
     pub id: String,
-    pub employee_id: String,
+    pub assignee_type: String,
+    pub assignee_id: String,
     pub start_time: String,
     pub end_time: String,
     pub checkpoints: Vec<String>,
@@ -103,7 +133,8 @@ impl From<PatrolAssignment> for PatrolAssignmentResponse {
     fn from(a: PatrolAssignment) -> Self {
         Self {
             id: a.id.map(|t| t.id.to_string()).unwrap_or_default(),
-            employee_id: a.employee_id.id.to_string(),
+            assignee_type: a.assignee_type,
+            assignee_id: a.assignee_id.id.to_string(),
             start_time: a.start_time,
             end_time: a.end_time,
             checkpoints: a.checkpoints.iter().map(|c| c.id.to_string()).collect(),
@@ -116,7 +147,8 @@ impl From<PatrolAssignment> for PatrolAssignmentResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CreatePatrolAssignmentRequest {
-    pub employee_id: String,
+    pub assignee_type: String,
+    pub assignee_id: String,
     pub start_time: String,
     pub end_time: String,
     pub checkpoints: Vec<String>,
@@ -124,7 +156,8 @@ pub struct CreatePatrolAssignmentRequest {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UpdatePatrolAssignmentRequest {
-    pub employee_id: Option<String>,
+    pub assignee_type: Option<String>,
+    pub assignee_id: Option<String>,
     pub start_time: Option<String>,
     pub end_time: Option<String>,
     pub checkpoints: Option<Vec<String>>,

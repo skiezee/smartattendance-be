@@ -108,14 +108,85 @@ impl PatrolViewModel {
         Ok(incidents)
     }
 
+    // --- Area Methods ---
+
+    pub async fn create_area(
+        payload: web::Json<crate::models::patrol::CreateAreaRequest>,
+        data: &web::Data<AppState>,
+    ) -> Result<crate::models::patrol::PatrolArea, String> {
+        let area = crate::models::patrol::PatrolArea {
+            id: None,
+            name: payload.name.clone(),
+            description: payload.description.clone(),
+            created_at: Some(Local::now().to_rfc3339()),
+            updated_at: Some(Local::now().to_rfc3339()),
+        };
+
+        let created: Option<crate::models::patrol::PatrolArea> = data
+            .db
+            .create("patrol_areas")
+            .content(area)
+            .await
+            .map_err(|e| format!("Failed to create area: {}", e))?;
+
+        created.ok_or_else(|| "Failed to return created area".to_string())
+    }
+
+    pub async fn get_areas(
+        data: &web::Data<AppState>,
+    ) -> Result<Vec<crate::models::patrol::PatrolArea>, String> {
+        let mut result = data
+            .db
+            .query("SELECT * FROM patrol_areas ORDER BY created_at DESC")
+            .await
+            .map_err(|e| format!("Database query error: {}", e))?;
+
+        let areas: Vec<crate::models::patrol::PatrolArea> = result
+            .take(0)
+            .map_err(|e| format!("Failed to parse areas: {}", e))?;
+
+        Ok(areas)
+    }
+
+    pub async fn update_area(
+        id: &str,
+        payload: web::Json<crate::models::patrol::CreateAreaRequest>,
+        data: &web::Data<AppState>,
+    ) -> Result<crate::models::patrol::PatrolArea, String> {
+        let thing = Thing::from(("patrol_areas", Id::from(id)));
+        
+        let query = format!("UPDATE {} SET name = '{}', description = '{}', updated_at = '{}'", 
+            thing.to_string(), 
+            payload.name, 
+            payload.description.clone().unwrap_or_default(),
+            Local::now().to_rfc3339()
+        );
+        
+        let mut result = data.db.query(query).await.map_err(|e| e.to_string())?;
+        let updated: Option<crate::models::patrol::PatrolArea> = result.take(0).map_err(|e| e.to_string())?;
+        
+        updated.ok_or_else(|| "Area not found".to_string())
+    }
+
+    pub async fn delete_area(
+        id: &str,
+        data: &web::Data<AppState>,
+    ) -> Result<String, String> {
+        let _: Option<crate::models::patrol::PatrolArea> = data.db.delete(("patrol_areas", id)).await.map_err(|e| e.to_string())?;
+        Ok("Area deleted successfully".to_string())
+    }
+
     // --- Checkpoint Methods ---
 
     pub async fn create_checkpoint(
         payload: web::Json<CreateCheckpointRequest>,
         data: &web::Data<AppState>,
     ) -> Result<Checkpoint, String> {
+        let area_thing = payload.area_id.as_ref().map(|id| Thing::from(("patrol_areas", Id::from(id.as_str()))));
+
         let checkpoint = Checkpoint {
             id: None,
+            area_id: area_thing,
             name: payload.name.clone(),
             qr_code_id: payload.qr_code_id.clone(),
             latitude: payload.latitude,
@@ -159,6 +230,7 @@ impl PatrolViewModel {
         let thing = Thing::from(("checkpoints", Id::from(id)));
         
         let mut updates = Vec::new();
+        if let Some(area_id) = &payload.area_id { updates.push(format!("area_id = type::thing('patrol_areas:{}')", area_id)); }
         if let Some(name) = &payload.name { updates.push(format!("name = '{}'", name)); }
         if let Some(qr) = &payload.qr_code_id { updates.push(format!("qr_code_id = '{}'", qr)); }
         if let Some(lat) = &payload.latitude { updates.push(format!("latitude = {}", lat)); }
@@ -188,7 +260,8 @@ impl PatrolViewModel {
         payload: web::Json<CreatePatrolAssignmentRequest>,
         data: &web::Data<AppState>,
     ) -> Result<PatrolAssignment, String> {
-        let employee_thing = Thing::from(("employee", Id::from(payload.employee_id.as_str())));
+        let table = if payload.assignee_type == "group" { "groups" } else { "employee" };
+        let assignee_thing = Thing::from((table, Id::from(payload.assignee_id.as_str())));
         
         let checkpoint_things: Vec<Thing> = payload.checkpoints
             .iter()
@@ -197,7 +270,8 @@ impl PatrolViewModel {
 
         let assignment = PatrolAssignment {
             id: None,
-            employee_id: employee_thing,
+            assignee_type: payload.assignee_type.clone(),
+            assignee_id: assignee_thing,
             start_time: payload.start_time.clone(),
             end_time: payload.end_time.clone(),
             checkpoints: checkpoint_things,
@@ -219,8 +293,6 @@ impl PatrolViewModel {
     pub async fn get_patrol_assignments(
         data: &web::Data<AppState>,
     ) -> Result<Vec<PatrolAssignmentResponse>, String> {
-        // Deserialize into PatrolAssignment (handles Thing types properly)
-        // then convert to PatrolAssignmentResponse (plain String IDs, JSON-safe)
         let mut result = data
             .db
             .query("SELECT * FROM patrol_assignments ORDER BY created_at DESC")
@@ -241,13 +313,16 @@ impl PatrolViewModel {
     ) -> Result<PatrolAssignment, String> {
         let thing = Thing::from(("patrol_assignments", Id::from(id)));
         
-        // A simple query to fetch and update
         let mut existing_res = data.db.query("SELECT * FROM type::thing($thing)").bind(("thing", thing.clone())).await.map_err(|e| e.to_string())?;
         let mut existing: Option<PatrolAssignment> = existing_res.take(0).map_err(|e| e.to_string())?;
         
         let mut existing = existing.ok_or_else(|| "Assignment not found".to_string())?;
 
-        if let Some(emp_id) = &payload.employee_id { existing.employee_id = Thing::from(("employee", Id::from(emp_id.as_str()))); }
+        if let (Some(a_type), Some(a_id)) = (&payload.assignee_type, &payload.assignee_id) {
+            let table = if a_type == "group" { "groups" } else { "employee" };
+            existing.assignee_type = a_type.clone();
+            existing.assignee_id = Thing::from((table, Id::from(a_id.as_str())));
+        }
         if let Some(start) = &payload.start_time { existing.start_time = start.clone(); }
         if let Some(end) = &payload.end_time { existing.end_time = end.clone(); }
         if let Some(status) = &payload.status { existing.status = status.clone(); }
