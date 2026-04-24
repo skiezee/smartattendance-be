@@ -133,12 +133,12 @@ pub struct PatrolAssignmentResponse {
 impl From<PatrolAssignment> for PatrolAssignmentResponse {
     fn from(a: PatrolAssignment) -> Self {
         Self {
-            id: a.id.map(|t| t.id.to_string()).unwrap_or_default(),
+            id: a.id.map(|t| t.to_string()).unwrap_or_default(),
             assignee_type: a.assignee_type,
-            assignee_id: a.assignee_id.id.to_string(),
+            assignee_id: a.assignee_id.to_string(),
             start_time: a.start_time,
             end_time: a.end_time,
-            checkpoints: a.checkpoints.iter().map(|c| c.id.to_string()).collect(),
+            checkpoints: a.checkpoints.iter().map(|c| c.to_string()).collect(),
             status: a.status,
             created_at: a.created_at,
             updated_at: a.updated_at,

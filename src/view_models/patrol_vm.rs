@@ -23,7 +23,7 @@ impl PatrolViewModel {
         // First, verify that the employee exists and get their ID
         let mut result = data
             .db
-            .query("SELECT * FROM employee WHERE type::string(nik) = type::string($nik)")
+            .query("SELECT * FROM employees WHERE type::string(nik) = type::string($nik)")
             .bind(("nik", payload.nik.clone()))
             .await
             .map_err(|e| format!("Database query error: {}", e))?;
@@ -260,7 +260,7 @@ impl PatrolViewModel {
         payload: web::Json<CreatePatrolAssignmentRequest>,
         data: &web::Data<AppState>,
     ) -> Result<PatrolAssignment, String> {
-        let table = if payload.assignee_type == "group" { "groups" } else { "employee" };
+        let table = if payload.assignee_type == "group" { "groups" } else { "employees" };
         let assignee_thing = Thing::from((table, Id::from(payload.assignee_id.as_str())));
         
         let checkpoint_things: Vec<Thing> = payload.checkpoints
@@ -311,7 +311,12 @@ impl PatrolViewModel {
         payload: web::Json<UpdatePatrolAssignmentRequest>,
         data: &web::Data<AppState>,
     ) -> Result<PatrolAssignment, String> {
-        let thing = Thing::from(("patrol_assignments", Id::from(id)));
+        let id_part = if id.contains(':') {
+            id.split(':').last().unwrap_or(id)
+        } else {
+            id
+        };
+        let thing = Thing::from(("patrol_assignments", Id::from(id_part)));
         
         let mut existing_res = data.db.query("SELECT * FROM type::thing($thing)").bind(("thing", thing.clone())).await.map_err(|e| e.to_string())?;
         let mut existing: Option<PatrolAssignment> = existing_res.take(0).map_err(|e| e.to_string())?;
@@ -319,7 +324,7 @@ impl PatrolViewModel {
         let mut existing = existing.ok_or_else(|| "Assignment not found".to_string())?;
 
         if let (Some(a_type), Some(a_id)) = (&payload.assignee_type, &payload.assignee_id) {
-            let table = if a_type == "group" { "groups" } else { "employee" };
+            let table = if a_type == "group" { "groups" } else { "employees" };
             existing.assignee_type = a_type.clone();
             existing.assignee_id = Thing::from((table, Id::from(a_id.as_str())));
         }
@@ -331,7 +336,7 @@ impl PatrolViewModel {
         }
         existing.updated_at = Some(Local::now().to_rfc3339());
 
-        let updated: Option<PatrolAssignment> = data.db.update(("patrol_assignments", id)).content(existing).await.map_err(|e| e.to_string())?;
+        let updated: Option<PatrolAssignment> = data.db.update(("patrol_assignments", id_part)).content(existing).await.map_err(|e| e.to_string())?;
         updated.ok_or_else(|| "Failed to update assignment".to_string())
     }
 
@@ -339,7 +344,12 @@ impl PatrolViewModel {
         id: &str,
         data: &web::Data<AppState>,
     ) -> Result<String, String> {
-        let _: Option<PatrolAssignment> = data.db.delete(("patrol_assignments", id)).await.map_err(|e| e.to_string())?;
+        let id_part = if id.contains(':') {
+            id.split(':').last().unwrap_or(id)
+        } else {
+            id
+        };
+        let _: Option<PatrolAssignment> = data.db.delete(("patrol_assignments", id_part)).await.map_err(|e| e.to_string())?;
         Ok("Assignment deleted successfully".to_string())
     }
 
@@ -368,7 +378,7 @@ impl PatrolViewModel {
         // Fetch active assignments with embedded employee; latest scan log fetched client-side
         let mut result = data
             .db
-            .query("SELECT * FROM patrol_assignments WHERE status = 'in_progress' FETCH employee_id, checkpoints")
+            .query("SELECT * FROM patrol_assignments WHERE status = 'in_progress' FETCH assignee_id, checkpoints")
             .await
             .map_err(|e| format!("Database query error: {}", e))?;
 
