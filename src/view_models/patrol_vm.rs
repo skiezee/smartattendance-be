@@ -23,7 +23,7 @@ impl PatrolViewModel {
         // First, verify that the employee exists and get their ID
         let mut result = data
             .db
-            .query("SELECT * FROM employees WHERE type::string(nik) = type::string($nik)")
+            .query("SELECT * FROM employee WHERE type::string(nik) = type::string($nik)")
             .bind(("nik", payload.nik.clone()))
             .await
             .map_err(|e| format!("Database query error: {}", e))?;

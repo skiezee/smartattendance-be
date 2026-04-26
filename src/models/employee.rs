@@ -78,8 +78,16 @@ pub struct EmployeeResponse {
     pub full_name: String,
     pub email: String,
     pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub department: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub department_id: Option<surrealdb::sql::Thing>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_id: Option<surrealdb::sql::Thing>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub employment_status: Option<String>,
     pub attendance_requirement: Option<AttendanceRequirement>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,

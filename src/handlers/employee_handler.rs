@@ -26,7 +26,7 @@ pub async fn get_employee_by_nik(
     let nik_str = nik.into_inner();
     info!("Fetching employee with NIK: {}", nik_str);
     
-    let query = "SELECT * FROM employees WHERE nik = $nik LIMIT 1";
+    let query = "SELECT * FROM employee WHERE nik = $nik LIMIT 1";
     
     match data.db.query(query).bind(("nik", nik_str.clone())).await {
         Ok(mut response) => {
@@ -70,7 +70,7 @@ pub async fn create_employee(
     info!("Creating new employee: {}", req.nik);
     
     // Check if NIK already exists
-    let check_query = "SELECT * FROM employees WHERE nik = $nik LIMIT 1";
+    let check_query = "SELECT * FROM employee WHERE nik = $nik LIMIT 1";
     match data.db.query(check_query).bind(("nik", req.nik.clone())).await {
         Ok(mut response) => {
             match response.take::<Vec<EmployeeResponse>>(0) {
@@ -95,20 +95,25 @@ pub async fn create_employee(
     // Hash password
     let password_hash = bcrypt::hash(&req.password, bcrypt::DEFAULT_COST).unwrap_or_default();
     
-    // Create employee
+    // Ensure default department and position exist
+    let _ = data.db.query("CREATE department:default SET name = 'General', is_active = true;").await;
+    let _ = data.db.query("CREATE position:default SET name = 'Staff', level = 'staff', is_active = true;").await;
+    
+    // Create employee with proper schema
     let query = r#"
-        CREATE employees CONTENT {
-            nik: $nik,
-            full_name: $full_name,
-            email: $email,
-            password_hash: $password_hash,
-            role: $role,
-            department: $department,
-            status: $status,
-            attendance_requirement: $attendance_requirement,
-            created_at: time::now(),
-            updated_at: time::now()
-        }
+        CREATE employee SET
+            nik = $nik,
+            full_name = $full_name,
+            email = $email,
+            password_hash = $password_hash,
+            role = $role,
+            department_id = department:default,
+            position_id = position:default,
+            employment_status = 'active',
+            join_date = time::now(),
+            attendance_requirement = $attendance_requirement,
+            created_at = time::now(),
+            updated_at = time::now()
     "#;
     
     match data.db.query(query)
@@ -117,8 +122,6 @@ pub async fn create_employee(
         .bind(("email", req.email.clone()))
         .bind(("password_hash", password_hash))
         .bind(("role", req.role.clone()))
-        .bind(("department", req.department.clone().unwrap_or_else(|| "General".to_string())))
-        .bind(("status", req.status.clone().unwrap_or_else(|| "Active".to_string())))
         .bind(("attendance_requirement", req.attendance_requirement.clone()))
         .await
     {
@@ -144,7 +147,7 @@ pub async fn create_employee(
                     error!("Error parsing created employee: {:?}", e);
                     HttpResponse::InternalServerError().json(json!({
                         "status": "error",
-                        "message": "Failed to create employee"
+                        "message": format!("Failed to create employee: {}", e)
                     }))
                 }
             }
@@ -209,7 +212,7 @@ pub async fn update_employee(
     updates.push("updated_at = time::now()".to_string());
     let update_clause = updates.join(", ");
     
-    let query = format!("UPDATE employees SET {} WHERE nik = $nik RETURN AFTER", update_clause);
+    let query = format!("UPDATE employee SET {} WHERE nik = $nik RETURN AFTER", update_clause);
     
     match data.db.query(&query).bind(("nik", nik_str.clone())).await {
         Ok(mut response) => {
@@ -255,7 +258,7 @@ pub async fn delete_employee(
     let nik_str = nik.into_inner();
     info!("Deleting employee: {}", nik_str);
     
-    let query = "DELETE employees WHERE nik = $nik";
+    let query = "DELETE employee WHERE nik = $nik";
     
     match data.db.query(query).bind(("nik", nik_str.clone())).await {
         Ok(_) => {
