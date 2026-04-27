@@ -71,13 +71,15 @@ pub struct RegisterResponse {
     pub message: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EmployeeResponse {
     pub id: Option<surrealdb::sql::Thing>,
     pub nik: String,
     pub full_name: String,
     pub email: String,
     pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phone_number: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub department: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -88,6 +90,8 @@ pub struct EmployeeResponse {
     pub position_id: Option<surrealdb::sql::Thing>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub employment_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_photo_url: Option<String>,
     pub attendance_requirement: Option<AttendanceRequirement>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,

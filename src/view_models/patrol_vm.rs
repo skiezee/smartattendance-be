@@ -8,10 +8,9 @@ use crate::models::patrol::{
     Checkpoint, CreateCheckpointRequest, UpdateCheckpointRequest,
     PatrolAssignment, PatrolAssignmentResponse,
     CreatePatrolAssignmentRequest, UpdatePatrolAssignmentRequest,
-    PatrolLog, ScanCheckpointRequest
 };
 use surrealdb::sql::{Thing, Id};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 pub struct PatrolViewModel;
 
@@ -319,7 +318,7 @@ impl PatrolViewModel {
         let thing = Thing::from(("patrol_assignments", Id::from(id_part)));
         
         let mut existing_res = data.db.query("SELECT * FROM type::thing($thing)").bind(("thing", thing.clone())).await.map_err(|e| e.to_string())?;
-        let mut existing: Option<PatrolAssignment> = existing_res.take(0).map_err(|e| e.to_string())?;
+        let existing: Option<PatrolAssignment> = existing_res.take(0).map_err(|e| e.to_string())?;
         
         let mut existing = existing.ok_or_else(|| "Assignment not found".to_string())?;
 
