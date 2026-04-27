@@ -9,3 +9,4 @@ pub mod patrol_handler;
 pub mod profile_handler;
 pub mod shift_handler;
 pub mod wifi_handler;
+pub mod group_handler;

@@ -2,6 +2,3 @@
 .env
 .env.example
 config/firebase-service-account.json
-# macOS metadata
-._*
-.DS_Store
