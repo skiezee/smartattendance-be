@@ -56,6 +56,82 @@ pub async fn get_incidents_by_nik(
     }
 }
 
+// --- Area Handlers ---
+
+pub async fn create_area(
+    req: web::Json<crate::models::patrol::CreateAreaRequest>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match PatrolViewModel::create_area(req, &data).await {
+        Ok(res) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "data": res
+        })),
+        Err(e) => {
+            log::error!("Error creating area: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}
+
+pub async fn get_areas(data: web::Data<AppState>) -> impl Responder {
+    match PatrolViewModel::get_areas(&data).await {
+        Ok(areas) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "data": areas
+        })),
+        Err(e) => {
+            log::error!("Error getting areas: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}
+
+pub async fn update_area(
+    path: web::Path<String>,
+    req: web::Json<crate::models::patrol::CreateAreaRequest>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match PatrolViewModel::update_area(&path, req, &data).await {
+        Ok(res) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "data": res
+        })),
+        Err(e) => {
+            log::error!("Error updating area: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}
+
+pub async fn delete_area(
+    path: web::Path<String>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match PatrolViewModel::delete_area(&path, &data).await {
+        Ok(res) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "message": res
+        })),
+        Err(e) => {
+            log::error!("Error deleting area: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}
+
 // --- Checkpoint Handlers ---
 
 pub async fn create_checkpoint(
