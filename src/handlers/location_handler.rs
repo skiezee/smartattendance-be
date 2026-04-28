@@ -161,7 +161,6 @@ pub async fn validate_location(
 
                     let mut nearest_distance = f64::MAX;
                     let mut nearest_location_name = String::new();
-                    let mut is_within_boundary = false;
 
                     for boundary in &boundaries {
                         let distance = calculate_distance(
@@ -177,7 +176,6 @@ pub async fn validate_location(
                         }
 
                         if distance <= boundary.radius as f64 {
-                            is_within_boundary = true;
                             info!(
                                 "Location valid: within {} (distance: {:.2}m, radius: {}m)",
                                 boundary.name, distance, boundary.radius
@@ -192,7 +190,8 @@ pub async fn validate_location(
                         }
                     }
 
-                    if !is_within_boundary {
+                    // If we reach here, no boundary matched
+                    {
                         let message = format!(
                             "Lokasi tidak valid. Anda berada {:.0}m dari {} (radius: {}m). Harap berada di area kantor untuk melakukan attendance.",
                             nearest_distance,
@@ -209,14 +208,6 @@ pub async fn validate_location(
                             success: true,
                             valid: false,
                             message,
-                            distance: Some(nearest_distance),
-                            nearest_location: Some(nearest_location_name),
-                        })
-                    } else {
-                        HttpResponse::Ok().json(ValidateLocationResponse {
-                            success: true,
-                            valid: false,
-                            message: "Lokasi tidak valid".to_string(),
                             distance: Some(nearest_distance),
                             nearest_location: Some(nearest_location_name),
                         })

@@ -7,6 +7,7 @@ mod services;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
+use actix_files as fs;
 use crate::config::app_state::AppState;
 use crate::routes::api::init_routes;
 use surrealdb::engine::any::connect;
@@ -22,8 +23,6 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize logger
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
-    
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     log::info!("Starting Smart Attendance Backend...");
 
@@ -73,6 +72,9 @@ async fn main() -> std::io::Result<()> {
 
     // Start Actix Web Server
     log::info!("Starting Actix Web server on http://{}", server_addr);
+    
+    // Create uploads directory if it doesn't exist
+    std::fs::create_dir_all("uploads/profile_photos").ok();
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -86,6 +88,8 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(app_state.clone())
             .configure(init_routes)
+            // Serve static files from uploads directory
+            .service(fs::Files::new("/uploads", "./uploads").show_files_listing())
     })
 
     .bind(server_addr)?
