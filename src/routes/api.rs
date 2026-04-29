@@ -14,6 +14,8 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/attendance/logs", web::get().to(attendance_handler::get_all_attendances))
             .route("/employees", web::get().to(employee_handler::get_all_employees))
             .route("/employees", web::post().to(employee_handler::create_employee))
+            .route("/employees/bulk", web::post().to(employee_handler::bulk_create_employees))
+            .route("/employees/bulk-attendance", web::put().to(employee_handler::bulk_update_attendance))
             .route("/employees/{nik}", web::get().to(employee_handler::get_employee_by_nik))
             .route("/employees/{nik}", web::put().to(employee_handler::update_employee))
             .route("/employees/{nik}", web::delete().to(employee_handler::delete_employee))
