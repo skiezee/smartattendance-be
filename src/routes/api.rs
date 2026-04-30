@@ -1,5 +1,5 @@
 use actix_web::web;
-use crate::handlers::{attendance_handler, auth_handler, dashboard_handler, employee_handler, health_handler, leave_handler, location_handler, patrol_handler, profile_handler, shift_handler, wifi_handler};
+use crate::handlers::{attendance_handler, auth_handler, dashboard_handler, employee_handler, health_handler, leave_handler, location_handler, maintenance_handler, patrol_handler, profile_handler, shift_handler, wifi_handler};
 
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -19,6 +19,8 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/employees/{nik}", web::get().to(employee_handler::get_employee_by_nik))
             .route("/employees/{nik}", web::put().to(employee_handler::update_employee))
             .route("/employees/{nik}", web::delete().to(employee_handler::delete_employee))
+            // Maintenance Routes
+            .route("/maintenance/fix-attendance-requirements", web::post().to(maintenance_handler::fix_attendance_requirements))
             // Profile Management Routes
             .route("/profile/{nik}", web::get().to(profile_handler::get_profile))
             .route("/profile", web::put().to(profile_handler::update_profile))
