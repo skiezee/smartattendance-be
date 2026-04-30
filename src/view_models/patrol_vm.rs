@@ -12,6 +12,26 @@ use crate::models::patrol::{
 use surrealdb::sql::{Thing, Id};
 use serde_json::Value;
 
+/// Helper: extract a string ID from a SurrealDB Value (handles Thing/Object/String variants)
+fn extract_id_from_value(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Object(m) => {
+            // SurrealDB Thing as JSON: {"tb": "table", "id": {"String": "xxx"}} or {"String": "xxx"}
+            if let Some(id_v) = m.get("id") {
+                let tb = m.get("tb").and_then(|t| t.as_str()).unwrap_or("");
+                let id_str = extract_id_from_value(id_v);
+                if tb.is_empty() { id_str } else { format!("{}:{}", tb, id_str) }
+            } else if let Some(s) = m.get("String").and_then(|t| t.as_str()) {
+                s.to_string()
+            } else {
+                serde_json::to_string(v).unwrap_or_default()
+            }
+        }
+        _ => serde_json::to_string(v).unwrap_or_default().trim_matches('"').to_string(),
+    }
+}
+
 pub struct PatrolViewModel;
 
 impl PatrolViewModel {
@@ -357,97 +377,140 @@ impl PatrolViewModel {
     pub async fn get_active_patrol_status(
         data: &web::Data<AppState>,
     ) -> Result<Vec<PatrolAssignmentResponse>, String> {
-        // We fetch the assignments with their relations
+        // Simpler query: just get in_progress assignments and fetch checkpoints (no nested area fetch)
         let mut result = data
             .db
-            .query("SELECT *, checkpoints.* AS checkpoint_objs FROM patrol_assignments WHERE status = 'in_progress' FETCH checkpoints.area_id")
+            .query("SELECT * FROM patrol_assignments WHERE status = 'in_progress' FETCH checkpoints")
             .await
             .map_err(|e| format!("Database query error: {}", e))?;
 
-        let active_raw: Vec<Value> = result
+        // Define a local struct to capture the fetched data correctly
+        #[derive(serde::Deserialize)]
+        struct FetchedAssignment {
+            id: Thing,
+            assignee_type: String,
+            assignee_id: Thing,
+            start_time: String,
+            end_time: String,
+            status: String,
+            checkpoints: Vec<Checkpoint>,
+            created_at: Option<String>,
+            updated_at: Option<String>,
+        }
+
+        let active_raw: Vec<FetchedAssignment> = result
             .take(0)
             .map_err(|e| format!("Failed to parse active patrols: {}", e))?;
 
         let mut responses = Vec::new();
 
         for val in active_raw {
-            let mut a_res = serde_json::from_value::<PatrolAssignmentResponse>(val.clone())
-                .map_err(|e| format!("Mapping error: {}", e))?;
-            
-            let id_part = a_res.id.split(':').last().unwrap_or(&a_res.id).to_string();
-            
-            // Get logs for this assignment
-            let mut log_res = data.db.query("SELECT * FROM patrol_logs WHERE assignment_id = type::thing('patrol_assignments', $id)")
-                .bind(("id", id_part))
+            // Extract id
+            let id_raw = val.id.to_string();
+
+            let assignee_type = val.assignee_type.clone();
+            let assignee_id_raw = val.assignee_id.to_string();
+
+            let start_time = val.start_time.clone();
+            let end_time = val.end_time.clone();
+            let status = val.status.clone();
+
+            let id_part = id_raw.split(':').last().unwrap_or(&id_raw).to_string();
+            let a_id_part = assignee_id_raw.split(':').last().unwrap_or(&assignee_id_raw).to_string();
+
+            // Get patrol logs for this assignment
+            let mut log_res = data.db
+                .query("SELECT * FROM patrol_logs WHERE assignment_id = type::thing('patrol_assignments', $id)")
+                .bind(("id", id_part.clone()))
                 .await
                 .map_err(|e| e.to_string())?;
-            
-            let logs: Vec<crate::models::patrol::PatrolLog> = log_res.take(0).map_err(|e| e.to_string())?;
-            
-            // Get checkpoint objects from the value (since we fetched them)
-            if let Some(cp_objs) = val.get("checkpoint_objs").and_then(|v| v.as_array()) {
-                let mut details = Vec::new();
-                let mut visited_count = 0;
-                let mut first_area_id = None;
-                let mut first_area_name = None;
+            let logs: Vec<crate::models::patrol::PatrolLog> = log_res.take(0).unwrap_or_default();
 
-                for cp_val in cp_objs {
-                    let cp: crate::models::patrol::Checkpoint = serde_json::from_value(cp_val.clone()).unwrap();
-                    let cp_id = cp.id.as_ref().map(|t| t.to_string()).unwrap_or_default();
-                    
-                    let log_entry = logs.iter().find(|l| l.checkpoint_id.to_string() == cp_id);
-                    let is_visited = log_entry.is_some();
-                    if is_visited { visited_count += 1; }
+            // Parse checkpoint_objs
+            let mut details = Vec::new();
+            let mut visited_count = 0usize;
+            let mut first_area_id: Option<String> = None;
+            let mut first_area_name: Option<String> = None;
+            let cp_arr_len;
 
+            if !val.checkpoints.is_empty() {
+                cp_arr_len = val.checkpoints.len();
+                for cp_val in &val.checkpoints {
+                    let cp_id = cp_val.id.as_ref().map(|t| t.to_string()).unwrap_or_default();
+                    let cp_name = cp_val.name.clone();
+                    let cp_qr = cp_val.qr_code_id.clone();
+
+                    // area_id string
                     if first_area_id.is_none() {
-                        if let Some(area_thing) = &cp.area_id {
-                             first_area_id = Some(area_thing.to_string());
-                             // Try to get area name if fetched (nested fetch is tricky, let's see)
-                             if let Some(area_val) = cp_val.get("area_id") {
-                                 if let Some(name) = area_val.get("name").and_then(|v| v.as_str()) {
-                                     first_area_name = Some(name.to_string());
-                                 }
-                             }
+                        if let Some(area_thing) = &cp_val.area_id {
+                            first_area_id = Some(area_thing.to_string());
                         }
                     }
 
+                    let log_entry = logs.iter().find(|l| {
+                        let l_id = l.checkpoint_id.to_string();
+                        l_id == cp_id || l_id.ends_with(&format!(":{}", cp_id.split(':').last().unwrap_or(&cp_id)))
+                    });
+                    let is_visited = log_entry.is_some();
+                    if is_visited { visited_count += 1; }
+
                     details.push(crate::models::patrol::CheckpointDetail {
                         id: cp_id,
-                        name: cp.name,
-                        qr_code_id: cp.qr_code_id,
+                        name: cp_name,
+                        qr_code_id: cp_qr,
                         status: if is_visited { "visited".to_string() } else { "pending".to_string() },
                         scanned_at: log_entry.map(|l| l.scanned_at.clone()),
                     });
                 }
-                
-                a_res.checkpoint_details = Some(details);
-                a_res.progress = if cp_objs.is_empty() { 0.0 } else { (visited_count as f64 / cp_objs.len() as f64) * 100.0 };
-                a_res.area_id = first_area_id;
-                a_res.area_name = first_area_name;
+            } else {
+                cp_arr_len = 0;
             }
 
-            // Get Assignee Name
-            let table = if a_res.assignee_type == "group" { "groups" } else { "employee" };
-            let a_id_part = a_res.assignee_id.split(':').last().unwrap_or(&a_res.assignee_id).to_string();
-            
-            let mut name_res = data.db.query(format!("SELECT * FROM type::thing('{}', $id)", table))
+            let progress = if cp_arr_len > 0 {
+                (visited_count as f64 / cp_arr_len as f64) * 100.0
+            } else { 0.0 };
+
+            // Get assignee name
+            let table = if assignee_type == "group" { "groups" } else { "employee" };
+            let mut name_res = data.db
+                .query(format!("SELECT * FROM type::thing('{}', $id)", table))
                 .bind(("id", a_id_part))
                 .await
                 .map_err(|e| e.to_string())?;
-            
-            if a_res.assignee_type == "group" {
+
+            let assignee_name = if assignee_type == "group" {
                 let g: Option<crate::models::group::EmployeeGroup> = name_res.take(0).unwrap_or(None);
-                a_res.assignee_name = g.map(|x| x.name);
+                g.map(|x| x.name)
             } else {
                 let e: Option<crate::models::employee::EmployeeResponse> = name_res.take(0).unwrap_or(None);
-                a_res.assignee_name = e.map(|x| x.full_name);
-            }
+                e.map(|x| x.full_name)
+            };
 
-            responses.push(a_res);
+            let created_at = val.created_at.clone();
+            let updated_at = val.updated_at.clone();
+
+            responses.push(PatrolAssignmentResponse {
+                id: id_raw,
+                assignee_type,
+                assignee_id: assignee_id_raw,
+                assignee_name,
+                start_time,
+                end_time,
+                status,
+                checkpoints: vec![],
+                checkpoint_details: Some(details),
+                progress,
+                area_id: first_area_id,
+                area_name: first_area_name,
+                created_at,
+                updated_at,
+            });
         }
 
         Ok(responses)
     }
+
+
 
     pub async fn scan_checkpoint(
         payload: web::Json<crate::models::patrol::ScanCheckpointRequest>,
@@ -482,7 +545,7 @@ impl PatrolViewModel {
         // Fetch active assignments with embedded employee; latest scan log fetched client-side
         let mut result = data
             .db
-            .query("SELECT * FROM patrol_assignments WHERE status = 'in_progress' FETCH assignee_id, checkpoints")
+            .query("SELECT *, type::string(id) as id FROM patrol_assignments WHERE status = 'in_progress' FETCH assignee_id, checkpoints")
             .await
             .map_err(|e| format!("Database query error: {}", e))?;
 
