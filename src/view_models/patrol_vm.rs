@@ -305,6 +305,50 @@ impl PatrolViewModel {
         Ok(assignments.into_iter().map(PatrolAssignmentResponse::from).collect())
     }
 
+    /// Get patrol assignments for a specific employee by NIK.
+    /// Joins through the employee table since assignee_id is an employee record reference.
+    pub async fn get_patrol_assignments_by_nik(
+        nik: &str,
+        data: &web::Data<AppState>,
+    ) -> Result<Vec<PatrolAssignmentResponse>, String> {
+        // 1. Resolve NIK → employee record ID
+        let mut emp_result = data
+            .db
+            .query("SELECT type::string(id) as id FROM employee WHERE type::string(nik) = type::string($nik)")
+            .bind(("nik", nik.to_string()))
+            .await
+            .map_err(|e| format!("Database query error: {}", e))?;
+
+        let employees: Vec<serde_json::Value> = emp_result
+            .take(0)
+            .map_err(|e| format!("Failed to parse employee: {}", e))?;
+
+        if employees.is_empty() {
+            log::warn!("No employee found for NIK: {}", nik);
+            return Ok(vec![]);
+        }
+
+        // 2. Get employee record ID string (e.g. "employee:abc123")
+        let emp_id = employees[0]["id"].as_str().unwrap_or_default().to_string();
+
+        log::info!("Fetching assignments for employee ID: {} (NIK: {})", emp_id, nik);
+
+        // 3. Query assignments where assignee_id matches the employee record
+        let mut result = data
+            .db
+            .query("SELECT * FROM patrol_assignments WHERE type::string(assignee_id) = type::string($emp_id) ORDER BY created_at DESC")
+            .bind(("emp_id", emp_id))
+            .await
+            .map_err(|e| format!("Database query error: {}", e))?;
+
+        let assignments: Vec<PatrolAssignment> = result
+            .take(0)
+            .map_err(|e| format!("Failed to parse assignments: {}", e))?;
+
+        log::info!("Found {} assignments for NIK: {}", assignments.len(), nik);
+        Ok(assignments.into_iter().map(PatrolAssignmentResponse::from).collect())
+    }
+
     pub async fn update_patrol_assignment(
         id: &str,
         payload: web::Json<UpdatePatrolAssignmentRequest>,

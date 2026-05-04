@@ -1,9 +1,15 @@
 use actix_web::{web, HttpResponse, Responder};
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::config::app_state::AppState;
 use crate::models::patrol::PatrolIncidentRequest;
 use crate::view_models::patrol_vm::PatrolViewModel;
+
+#[derive(Deserialize)]
+pub struct NikQuery {
+    pub nik: Option<String>,
+}
 
 pub async fn submit_incident(
     req: web::Json<PatrolIncidentRequest>,
@@ -229,18 +235,44 @@ pub async fn create_patrol_assignment(
     }
 }
 
-pub async fn get_patrol_assignments(data: web::Data<AppState>) -> impl Responder {
-    match PatrolViewModel::get_patrol_assignments(&data).await {
-        Ok(assignments) => HttpResponse::Ok().json(json!({
-            "status": "success",
-            "data": assignments
-        })),
-        Err(e) => {
-            log::error!("Error getting patrol assignments: {}", e);
-            HttpResponse::InternalServerError().json(json!({
-                "status": "error",
-                "message": e
-            }))
+/// GET /patrol/assignments          → all assignments (admin)
+/// GET /patrol/assignments?nik=xxx  → filtered by employee NIK (mobile)
+pub async fn get_patrol_assignments(
+    query: web::Query<NikQuery>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match &query.nik {
+        Some(nik) if !nik.is_empty() => {
+            // Mobile: return only assignments for this employee
+            match PatrolViewModel::get_patrol_assignments_by_nik(nik, &data).await {
+                Ok(assignments) => HttpResponse::Ok().json(json!({
+                    "status": "success",
+                    "data": assignments
+                })),
+                Err(e) => {
+                    log::error!("Error getting assignments for NIK {}: {}", nik, e);
+                    HttpResponse::InternalServerError().json(json!({
+                        "status": "error",
+                        "message": e
+                    }))
+                }
+            }
+        }
+        _ => {
+            // Admin: return all assignments
+            match PatrolViewModel::get_patrol_assignments(&data).await {
+                Ok(assignments) => HttpResponse::Ok().json(json!({
+                    "status": "success",
+                    "data": assignments
+                })),
+                Err(e) => {
+                    log::error!("Error getting patrol assignments: {}", e);
+                    HttpResponse::InternalServerError().json(json!({
+                        "status": "error",
+                        "message": e
+                    }))
+                }
+            }
         }
     }
 }
