@@ -14,11 +14,11 @@ impl AuthViewModel {
         let clean_nik = req.nik.trim().to_string();
         log::info!("Attempting login for NIK: {}", clean_nik);
 
-        // Ambil data user berdasarkan NIK
+        // Ambil data user berdasarkan NIK atau Email
         let result = data
             .db
-            .query("SELECT * FROM employee WHERE type::string(nik) = type::string($nik)")
-            .bind(("nik", clean_nik.clone()))
+            .query("SELECT * FROM employee WHERE type::string(nik) = type::string($ident) OR type::string(email) = type::string($ident)")
+            .bind(("ident", clean_nik.clone()))
             .await;
 
         match result {

@@ -1,5 +1,5 @@
 use actix_web::web;
-use crate::handlers::{attendance_handler, auth_handler, dashboard_handler, employee_handler, health_handler, leave_handler, location_handler, patrol_handler, profile_handler, shift_handler, wifi_handler};
+use crate::handlers::{attendance_handler, auth_handler, dashboard_handler, employee_handler, group_handler, health_handler, leave_handler, location_handler, maintenance_handler, patrol_handler, profile_handler, shift_handler, wifi_handler};
 
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -14,9 +14,19 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/attendance/logs", web::get().to(attendance_handler::get_all_attendances))
             .route("/employees", web::get().to(employee_handler::get_all_employees))
             .route("/employees", web::post().to(employee_handler::create_employee))
+            .route("/employees/bulk", web::post().to(employee_handler::bulk_create_employees))
+            .route("/employees/bulk-attendance", web::put().to(employee_handler::bulk_update_attendance))
             .route("/employees/{nik}", web::get().to(employee_handler::get_employee_by_nik))
             .route("/employees/{nik}", web::put().to(employee_handler::update_employee))
             .route("/employees/{nik}", web::delete().to(employee_handler::delete_employee))
+            // Maintenance Routes
+            .route("/maintenance/fix-attendance-requirements", web::post().to(maintenance_handler::fix_attendance_requirements))
+            // Group Management Routes
+            .route("/groups", web::get().to(group_handler::get_all_groups))
+            .route("/groups", web::post().to(group_handler::create_group))
+            .route("/groups/{id}", web::get().to(group_handler::get_group))
+            .route("/groups/{id}", web::put().to(group_handler::update_group))
+            .route("/groups/{id}", web::delete().to(group_handler::delete_group))
             // Profile Management Routes
             .route("/profile/{nik}", web::get().to(profile_handler::get_profile))
             .route("/profile", web::put().to(profile_handler::update_profile))
@@ -42,6 +52,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/patrol/assignments/{id}", web::delete().to(patrol_handler::delete_patrol_assignment))
             .route("/patrol/status/active", web::get().to(patrol_handler::get_active_patrol_status))
             .route("/patrol/tracking/live", web::get().to(patrol_handler::get_live_tracking))
+            .route("/patrol/scan", web::post().to(patrol_handler::scan_checkpoint))
             .route("/shift", web::post().to(shift_handler::create_shift))
             .route("/shift/list", web::post().to(shift_handler::get_shifts))
             .route("/shift/all", web::get().to(shift_handler::get_all_shifts))

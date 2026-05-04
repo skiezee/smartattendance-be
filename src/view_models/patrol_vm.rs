@@ -12,6 +12,26 @@ use crate::models::patrol::{
 use surrealdb::sql::{Thing, Id};
 use serde_json::Value;
 
+/// Helper: extract a string ID from a SurrealDB Value (handles Thing/Object/String variants)
+fn extract_id_from_value(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Object(m) => {
+            // SurrealDB Thing as JSON: {"tb": "table", "id": {"String": "xxx"}} or {"String": "xxx"}
+            if let Some(id_v) = m.get("id") {
+                let tb = m.get("tb").and_then(|t| t.as_str()).unwrap_or("");
+                let id_str = extract_id_from_value(id_v);
+                if tb.is_empty() { id_str } else { format!("{}:{}", tb, id_str) }
+            } else if let Some(s) = m.get("String").and_then(|t| t.as_str()) {
+                s.to_string()
+            } else {
+                serde_json::to_string(v).unwrap_or_default()
+            }
+        }
+        _ => serde_json::to_string(v).unwrap_or_default().trim_matches('"').to_string(),
+    }
+}
+
 pub struct PatrolViewModel;
 
 impl PatrolViewModel {
@@ -259,7 +279,7 @@ impl PatrolViewModel {
         payload: web::Json<CreatePatrolAssignmentRequest>,
         data: &web::Data<AppState>,
     ) -> Result<PatrolAssignment, String> {
-        let table = if payload.assignee_type == "group" { "groups" } else { "employees" };
+        let table = if payload.assignee_type == "group" { "groups" } else { "employee" };
         let assignee_thing = Thing::from((table, Id::from(payload.assignee_id.as_str())));
         
         let checkpoint_things: Vec<Thing> = payload.checkpoints
@@ -302,6 +322,50 @@ impl PatrolViewModel {
             .take(0)
             .map_err(|e| format!("Failed to parse assignments: {}", e))?;
 
+        Ok(assignments.into_iter().map(PatrolAssignmentResponse::from).collect())
+    }
+
+    /// Get patrol assignments for a specific employee by NIK.
+    /// Joins through the employee table since assignee_id is an employee record reference.
+    pub async fn get_patrol_assignments_by_nik(
+        nik: &str,
+        data: &web::Data<AppState>,
+    ) -> Result<Vec<PatrolAssignmentResponse>, String> {
+        // 1. Resolve NIK → employee record ID
+        let mut emp_result = data
+            .db
+            .query("SELECT type::string(id) as id FROM employee WHERE type::string(nik) = type::string($nik)")
+            .bind(("nik", nik.to_string()))
+            .await
+            .map_err(|e| format!("Database query error: {}", e))?;
+
+        let employees: Vec<serde_json::Value> = emp_result
+            .take(0)
+            .map_err(|e| format!("Failed to parse employee: {}", e))?;
+
+        if employees.is_empty() {
+            log::warn!("No employee found for NIK: {}", nik);
+            return Ok(vec![]);
+        }
+
+        // 2. Get employee record ID string (e.g. "employee:abc123")
+        let emp_id = employees[0]["id"].as_str().unwrap_or_default().to_string();
+
+        log::info!("Fetching assignments for employee ID: {} (NIK: {})", emp_id, nik);
+
+        // 3. Query assignments where assignee_id matches the employee record
+        let mut result = data
+            .db
+            .query("SELECT * FROM patrol_assignments WHERE type::string(assignee_id) = type::string($emp_id) ORDER BY created_at DESC")
+            .bind(("emp_id", emp_id))
+            .await
+            .map_err(|e| format!("Database query error: {}", e))?;
+
+        let assignments: Vec<PatrolAssignment> = result
+            .take(0)
+            .map_err(|e| format!("Failed to parse assignments: {}", e))?;
+
+        log::info!("Found {} assignments for NIK: {}", assignments.len(), nik);
         Ok(assignments.into_iter().map(PatrolAssignmentResponse::from).collect())
     }
 
@@ -357,18 +421,166 @@ impl PatrolViewModel {
     pub async fn get_active_patrol_status(
         data: &web::Data<AppState>,
     ) -> Result<Vec<PatrolAssignmentResponse>, String> {
-        // Deserialize into PatrolAssignment then convert to safe response struct
+        // Simpler query: just get in_progress assignments and fetch checkpoints (no nested area fetch)
         let mut result = data
             .db
-            .query("SELECT * FROM patrol_assignments WHERE status = 'in_progress'")
+            .query("SELECT * FROM patrol_assignments WHERE status = 'in_progress' FETCH checkpoints")
             .await
             .map_err(|e| format!("Database query error: {}", e))?;
 
-        let active: Vec<PatrolAssignment> = result
+        // Define a local struct to capture the fetched data correctly
+        #[derive(serde::Deserialize)]
+        struct FetchedAssignment {
+            id: Thing,
+            assignee_type: String,
+            assignee_id: Thing,
+            start_time: String,
+            end_time: String,
+            status: String,
+            checkpoints: Vec<Checkpoint>,
+            created_at: Option<String>,
+            updated_at: Option<String>,
+        }
+
+        let active_raw: Vec<FetchedAssignment> = result
             .take(0)
             .map_err(|e| format!("Failed to parse active patrols: {}", e))?;
 
-        Ok(active.into_iter().map(PatrolAssignmentResponse::from).collect())
+        let mut responses = Vec::new();
+
+        for val in active_raw {
+            // Extract id
+            let id_raw = val.id.to_string();
+
+            let assignee_type = val.assignee_type.clone();
+            let assignee_id_raw = val.assignee_id.to_string();
+
+            let start_time = val.start_time.clone();
+            let end_time = val.end_time.clone();
+            let status = val.status.clone();
+
+            let id_part = id_raw.split(':').last().unwrap_or(&id_raw).to_string();
+            let a_id_part = assignee_id_raw.split(':').last().unwrap_or(&assignee_id_raw).to_string();
+
+            // Get patrol logs for this assignment
+            let mut log_res = data.db
+                .query("SELECT * FROM patrol_logs WHERE assignment_id = type::thing('patrol_assignments', $id)")
+                .bind(("id", id_part.clone()))
+                .await
+                .map_err(|e| e.to_string())?;
+            let logs: Vec<crate::models::patrol::PatrolLog> = log_res.take(0).unwrap_or_default();
+
+            // Parse checkpoint_objs
+            let mut details = Vec::new();
+            let mut visited_count = 0usize;
+            let mut first_area_id: Option<String> = None;
+            let mut first_area_name: Option<String> = None;
+            let cp_arr_len;
+
+            if !val.checkpoints.is_empty() {
+                cp_arr_len = val.checkpoints.len();
+                for cp_val in &val.checkpoints {
+                    let cp_id = cp_val.id.as_ref().map(|t| t.to_string()).unwrap_or_default();
+                    let cp_name = cp_val.name.clone();
+                    let cp_qr = cp_val.qr_code_id.clone();
+
+                    // area_id string
+                    if first_area_id.is_none() {
+                        if let Some(area_thing) = &cp_val.area_id {
+                            first_area_id = Some(area_thing.to_string());
+                        }
+                    }
+
+                    let log_entry = logs.iter().find(|l| {
+                        let l_id = l.checkpoint_id.to_string();
+                        l_id == cp_id || l_id.ends_with(&format!(":{}", cp_id.split(':').last().unwrap_or(&cp_id)))
+                    });
+                    let is_visited = log_entry.is_some();
+                    if is_visited { visited_count += 1; }
+
+                    details.push(crate::models::patrol::CheckpointDetail {
+                        id: cp_id,
+                        name: cp_name,
+                        qr_code_id: cp_qr,
+                        status: if is_visited { "visited".to_string() } else { "pending".to_string() },
+                        scanned_at: log_entry.map(|l| l.scanned_at.clone()),
+                    });
+                }
+            } else {
+                cp_arr_len = 0;
+            }
+
+            let progress = if cp_arr_len > 0 {
+                (visited_count as f64 / cp_arr_len as f64) * 100.0
+            } else { 0.0 };
+
+            // Get assignee name
+            let table = if assignee_type == "group" { "groups" } else { "employee" };
+            let mut name_res = data.db
+                .query(format!("SELECT * FROM type::thing('{}', $id)", table))
+                .bind(("id", a_id_part))
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let assignee_name = if assignee_type == "group" {
+                let g: Option<crate::models::group::EmployeeGroup> = name_res.take(0).unwrap_or(None);
+                g.map(|x| x.name)
+            } else {
+                let e: Option<crate::models::employee::EmployeeResponse> = name_res.take(0).unwrap_or(None);
+                e.map(|x| x.full_name)
+            };
+
+            let created_at = val.created_at.clone();
+            let updated_at = val.updated_at.clone();
+
+            responses.push(PatrolAssignmentResponse {
+                id: id_raw,
+                assignee_type,
+                assignee_id: assignee_id_raw,
+                assignee_name,
+                start_time,
+                end_time,
+                status,
+                checkpoints: vec![],
+                checkpoint_details: Some(details),
+                progress,
+                area_id: first_area_id,
+                area_name: first_area_name,
+                created_at,
+                updated_at,
+            });
+        }
+
+        Ok(responses)
+    }
+
+
+
+    pub async fn scan_checkpoint(
+        payload: web::Json<crate::models::patrol::ScanCheckpointRequest>,
+        data: &web::Data<AppState>,
+    ) -> Result<String, String> {
+        let assignment_id = Thing::from(("patrol_assignments", Id::from(payload.assignment_id.as_str())));
+        let checkpoint_id = Thing::from(("checkpoints", Id::from(payload.checkpoint_id.as_str())));
+
+        let log_entry = crate::models::patrol::PatrolLog {
+            id: None,
+            assignment_id,
+            checkpoint_id,
+            scanned_at: Local::now().to_rfc3339(),
+            status: payload.status.clone().unwrap_or_else(|| "on_time".to_string()),
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+        };
+
+        let _: Option<crate::models::patrol::PatrolLog> = data
+            .db
+            .create("patrol_logs")
+            .content(log_entry)
+            .await
+            .map_err(|e| format!("Failed to record scan: {}", e))?;
+
+        Ok("Checkpoint scanned successfully".to_string())
     }
 
     pub async fn get_live_tracking(
@@ -377,7 +589,7 @@ impl PatrolViewModel {
         // Fetch active assignments with embedded employee; latest scan log fetched client-side
         let mut result = data
             .db
-            .query("SELECT * FROM patrol_assignments WHERE status = 'in_progress' FETCH assignee_id, checkpoints")
+            .query("SELECT *, type::string(id) as id FROM patrol_assignments WHERE status = 'in_progress' FETCH assignee_id, checkpoints")
             .await
             .map_err(|e| format!("Database query error: {}", e))?;
 

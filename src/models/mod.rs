@@ -4,3 +4,4 @@ pub mod employee;
 pub mod leave;
 pub mod patrol;
 pub mod shift;
+pub mod group;
