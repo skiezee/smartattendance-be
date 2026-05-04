@@ -33,6 +33,13 @@ pub struct Employee {
     pub department: Option<String>,
     pub status: Option<String>,
     pub fcm_token: Option<String>,
+    pub phone: Option<String>,
+    pub address: Option<String>,
+    pub date_of_birth: Option<String>,
+    pub hire_date: Option<String>,
+    pub position: Option<String>,
+    pub emergency_contact: Option<String>,
+    pub emergency_phone: Option<String>,
     pub attendance_requirement: Option<AttendanceRequirement>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
@@ -81,6 +88,20 @@ pub struct EmployeeResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub phone_number: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub phone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date_of_birth: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hire_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emergency_contact: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emergency_phone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub department: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
@@ -106,6 +127,13 @@ pub struct CreateEmployeeRequest {
     pub role: String,
     pub department: Option<String>,
     pub status: Option<String>,
+    pub phone: Option<String>,
+    pub address: Option<String>,
+    pub date_of_birth: Option<String>,
+    pub hire_date: Option<String>,
+    pub position: Option<String>,
+    pub emergency_contact: Option<String>,
+    pub emergency_phone: Option<String>,
     pub attendance_requirement: Option<AttendanceRequirement>,
 }
 
@@ -117,5 +145,23 @@ pub struct UpdateEmployeeRequest {
     pub role: Option<String>,
     pub department: Option<String>,
     pub status: Option<String>,
+    pub phone: Option<String>,
+    pub address: Option<String>,
+    pub date_of_birth: Option<String>,
+    pub hire_date: Option<String>,
+    pub position: Option<String>,
+    pub emergency_contact: Option<String>,
+    pub emergency_phone: Option<String>,
     pub attendance_requirement: Option<AttendanceRequirement>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct BulkAttendanceRequest {
+    pub employee_niks: Vec<String>,
+    pub attendance_requirement: AttendanceRequirement,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct BulkCreateEmployeeRequest {
+    pub employees: Vec<CreateEmployeeRequest>,
 }

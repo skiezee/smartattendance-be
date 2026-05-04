@@ -117,15 +117,29 @@ fn default_status() -> String {
     "scheduled".to_string()
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CheckpointDetail {
+    pub id: String,
+    pub name: String,
+    pub qr_code_id: String,
+    pub status: String, // "pending", "visited"
+    pub scanned_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct PatrolAssignmentResponse {
     pub id: String,
     pub assignee_type: String,
     pub assignee_id: String,
+    pub assignee_name: Option<String>,
     pub start_time: String,
     pub end_time: String,
     pub checkpoints: Vec<String>,
+    pub checkpoint_details: Option<Vec<CheckpointDetail>>,
     pub status: String,
+    pub progress: f64,
+    pub area_id: Option<String>,
+    pub area_name: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -136,10 +150,15 @@ impl From<PatrolAssignment> for PatrolAssignmentResponse {
             id: a.id.map(|t| t.to_string()).unwrap_or_default(),
             assignee_type: a.assignee_type,
             assignee_id: a.assignee_id.to_string(),
+            assignee_name: None,
             start_time: a.start_time,
             end_time: a.end_time,
             checkpoints: a.checkpoints.iter().map(|c| c.to_string()).collect(),
+            checkpoint_details: None,
             status: a.status,
+            progress: 0.0,
+            area_id: None,
+            area_name: None,
             created_at: a.created_at,
             updated_at: a.updated_at,
         }

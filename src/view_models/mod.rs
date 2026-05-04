@@ -5,3 +5,4 @@ pub mod employee_vm;
 pub mod leave_vm;
 pub mod patrol_vm;
 pub mod shift_vm;
+pub mod group_vm;
