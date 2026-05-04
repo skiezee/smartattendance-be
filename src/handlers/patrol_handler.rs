@@ -349,3 +349,22 @@ pub async fn get_live_tracking(data: web::Data<AppState>) -> impl Responder {
         }
     }
 }
+
+pub async fn scan_checkpoint(
+    req: web::Json<crate::models::patrol::ScanCheckpointRequest>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match PatrolViewModel::scan_checkpoint(req, &data).await {
+        Ok(res) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "message": res
+        })),
+        Err(e) => {
+            log::error!("Error scanning checkpoint: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}
