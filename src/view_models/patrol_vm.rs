@@ -9,6 +9,7 @@ use crate::models::patrol::{
     PatrolAssignment, PatrolAssignmentResponse,
     CreatePatrolAssignmentRequest, UpdatePatrolAssignmentRequest,
 };
+use crate::services::fcm_service::send_fcm_notification;
 use surrealdb::sql::{Thing, Id};
 use serde_json::Value;
 
@@ -57,38 +58,72 @@ impl PatrolViewModel {
         let employee_id = employee.id.clone().ok_or("Employee ID not found")?;
 
         // Save photo to file system if provided
+        log::info!("Processing incident photo, has photo_base64: {}", payload.photo_base64.is_some());
         let photo_url = payload.photo_base64.as_deref()
-            .and_then(|b64| Self::save_photo(b64, "incident"));
+            .and_then(|b64| {
+                log::info!("Photo base64 provided, length: {}", b64.len());
+                let result = Self::save_photo(b64, "incident");
+                if result.is_none() {
+                    log::error!("Failed to save incident photo!");
+                }
+                result
+            });
+        
+        log::info!("Photo URL after save: {:?}", photo_url);
 
-        // Create the incident record
-        let incident = PatrolIncident {
-            id: None,
-            employee_id: employee_id.clone(),
-            nik: payload.nik.clone(),
-            title: payload.title.clone(),
-            description: payload.description.clone(),
-            latitude: payload.latitude,
-            longitude: payload.longitude,
-            timestamp: payload.timestamp.clone(),
-            photo_url,
-            photo_base64: None, // Don't store base64 in DB
-            created_at: Local::now().to_rfc3339(),
-        };
+        // Create the incident record - let database set created_at with DEFAULT time::now()
+        let query = r#"
+            CREATE patrol_incidents CONTENT {
+                employee_id: type::thing('employee', $employee_id),
+                nik: $nik,
+                title: $title,
+                description: $description,
+                latitude: $latitude,
+                longitude: $longitude,
+                timestamp: $timestamp,
+                photo_url: $photo_url
+            }
+        "#;
 
-        // Insert into database
-        let created: Option<PatrolIncident> = data
+        let employee_id_str = employee_id.to_string();
+        let employee_id_part = employee_id_str.split(':').last().unwrap_or(&employee_id_str).to_string();
+
+        // Clone photo_url to avoid lifetime issues
+        let photo_url_for_binding = photo_url.clone();
+        
+        log::info!("Binding incident photo_url: {:?}", photo_url_for_binding);
+
+        let mut result = data
             .db
-            .create("patrol_incidents")
-            .content(incident)
+            .query(query)
+            .bind(("employee_id", employee_id_part))
+            .bind(("nik", payload.nik.clone()))
+            .bind(("title", payload.title.clone()))
+            .bind(("description", payload.description.clone()))
+            .bind(("latitude", payload.latitude))
+            .bind(("longitude", payload.longitude))
+            .bind(("timestamp", payload.timestamp.clone()))
+            .bind(("photo_url", photo_url_for_binding))
             .await
-            .map_err(|e| format!("Failed to create incident: {}", e))?;
+            .map_err(|e| {
+                log::error!("Database error creating incident: {}", e);
+                format!("Failed to create incident: {}", e)
+            })?;
 
-        let incident_id = created
-            .and_then(|i| i.id)
+        let created: Option<PatrolIncident> = result
+            .take(0)
+            .map_err(|e| {
+                log::error!("Failed to parse created incident: {}", e);
+                format!("Failed to parse created incident: {}", e)
+            })?;
+
+        let incident = created.ok_or_else(|| "Failed to return created incident".to_string())?;
+
+        let incident_id = incident.id
             .map(|id| id.to_string())
             .unwrap_or_default();
 
-        log::info!("Patrol incident created: {} by NIK: {}", incident_id, payload.nik);
+        log::info!("Patrol incident created: {} by NIK: {} with photo_url: {:?}", incident_id, payload.nik, incident.photo_url);
 
         Ok(PatrolIncidentResponse {
             status: "success".to_string(),
@@ -180,14 +215,19 @@ impl PatrolViewModel {
     ) -> Result<crate::models::patrol::PatrolArea, String> {
         let thing = Thing::from(("patrol_areas", Id::from(id)));
         
-        let query = format!("UPDATE {} SET name = '{}', description = '{}', updated_at = '{}'", 
-            thing.to_string(), 
-            payload.name, 
-            payload.description.clone().unwrap_or_default(),
-            Local::now().to_rfc3339()
-        );
+        let query = "UPDATE type::thing($thing) SET name = $name, description = $description, updated_at = time::now()";
         
-        let mut result = data.db.query(query).await.map_err(|e| e.to_string())?;
+        // Clone values to avoid lifetime issues
+        let name_val = payload.name.clone();
+        let description_val = payload.description.clone().unwrap_or_default();
+        
+        let mut result = data.db.query(query)
+            .bind(("thing", thing))
+            .bind(("name", name_val))
+            .bind(("description", description_val))
+            .await
+            .map_err(|e| e.to_string())?;
+        
         let updated: Option<crate::models::patrol::PatrolArea> = result.take(0).map_err(|e| e.to_string())?;
         
         updated.ok_or_else(|| "Area not found".to_string())
@@ -209,6 +249,9 @@ impl PatrolViewModel {
     ) -> Result<Checkpoint, String> {
         let area_thing = payload.area_id.as_ref().map(|id| Thing::from(("patrol_areas", Id::from(id.as_str()))));
 
+        // Handle photo upload if provided
+        let photo_url = payload.photo_base64.as_ref().and_then(|base64| Self::save_photo(base64, "checkpoint"));
+
         let checkpoint = Checkpoint {
             id: None,
             area_id: area_thing,
@@ -217,6 +260,8 @@ impl PatrolViewModel {
             latitude: payload.latitude,
             longitude: payload.longitude,
             description: payload.description.clone(),
+            photo_url,
+            photo_base64: None, // Don't store base64 in DB
             created_at: None,  // Let DB set with DEFAULT time::now()
             updated_at: None,  // Let DB set with DEFAULT time::now()
         };
@@ -254,18 +299,66 @@ impl PatrolViewModel {
     ) -> Result<Checkpoint, String> {
         let thing = Thing::from(("patrol_checkpoints", Id::from(id)));
         
-        let mut updates = Vec::new();
-        if let Some(area_id) = &payload.area_id { updates.push(format!("area_id = type::thing('patrol_areas:{}')", area_id)); }
-        if let Some(name) = &payload.name { updates.push(format!("name = '{}'", name)); }
-        if let Some(qr) = &payload.qr_code_id { updates.push(format!("qr_code_id = '{}'", qr)); }
-        if let Some(lat) = &payload.latitude { updates.push(format!("latitude = {}", lat)); }
-        if let Some(lng) = &payload.longitude { updates.push(format!("longitude = {}", lng)); }
-        if let Some(desc) = &payload.description { updates.push(format!("description = '{}'", desc)); }
-        updates.push(format!("updated_at = '{}'", Local::now().to_rfc3339()));
-
-        let query = format!("UPDATE {} SET {}", thing.to_string(), updates.join(", "));
+        let mut query = String::from("UPDATE type::thing($thing) SET updated_at = time::now()");
         
-        let mut result = data.db.query(query).await.map_err(|e| e.to_string())?;
+        // Clone values to avoid lifetime issues
+        let area_id_val = payload.area_id.clone();
+        let name_val = payload.name.clone();
+        let qr_code_id_val = payload.qr_code_id.clone();
+        let latitude_val = payload.latitude;
+        let longitude_val = payload.longitude;
+        let description_val = payload.description.clone();
+        let photo_url_val = payload.photo_base64.as_ref().and_then(|base64| Self::save_photo(base64, "checkpoint"));
+        
+        if area_id_val.is_some() {
+            query.push_str(", area_id = type::thing($area_table, $area_id)");
+        }
+        if name_val.is_some() {
+            query.push_str(", name = $name");
+        }
+        if qr_code_id_val.is_some() {
+            query.push_str(", qr_code_id = $qr_code_id");
+        }
+        if latitude_val.is_some() {
+            query.push_str(", latitude = $latitude");
+        }
+        if longitude_val.is_some() {
+            query.push_str(", longitude = $longitude");
+        }
+        if description_val.is_some() {
+            query.push_str(", description = $description");
+        }
+        if photo_url_val.is_some() {
+            query.push_str(", photo_url = $photo_url");
+        }
+        
+        let mut db_query = data.db.query(&query).bind(("thing", thing));
+        
+        if let Some(area_id) = area_id_val {
+            db_query = db_query
+                .bind(("area_table", "patrol_areas".to_string()))
+                .bind(("area_id", area_id));
+        }
+        if let Some(name) = name_val {
+            db_query = db_query.bind(("name", name));
+        }
+        if let Some(qr) = qr_code_id_val {
+            db_query = db_query.bind(("qr_code_id", qr));
+        }
+        if let Some(lat) = latitude_val {
+            db_query = db_query.bind(("latitude", lat));
+        }
+        if let Some(lng) = longitude_val {
+            db_query = db_query.bind(("longitude", lng));
+        }
+        if let Some(desc) = description_val {
+            db_query = db_query.bind(("description", desc));
+        }
+        if let Some(photo_url) = photo_url_val {
+            db_query = db_query.bind(("photo_url", photo_url));
+        }
+        
+        let mut result = db_query.await.map_err(|e| e.to_string())?;
         let updated: Option<Checkpoint> = result.take(0).map_err(|e| e.to_string())?;
         
         updated.ok_or_else(|| "Checkpoint not found".to_string())
@@ -297,7 +390,7 @@ impl PatrolViewModel {
         let assignment = PatrolAssignment {
             id: None,
             assignee_type: payload.assignee_type.clone(),
-            assignee_id: assignee_thing,
+            assignee_id: assignee_thing.clone(),
             start_time: payload.start_time.clone(),
             end_time: payload.end_time.clone(),
             checkpoints: checkpoint_things,
@@ -313,7 +406,135 @@ impl PatrolViewModel {
             .await
             .map_err(|e| format!("Failed to create assignment: {}", e))?;
 
-        created.ok_or_else(|| "Failed to return created assignment".to_string())
+        let created_assignment = created.ok_or_else(|| "Failed to return created assignment".to_string())?;
+
+        // ✅ Send FCM notification to assignee
+        let assignee_id_str = payload.assignee_id.clone();
+        let start_time = payload.start_time.clone();
+        let end_time = payload.end_time.clone();
+        let checkpoint_count = payload.checkpoints.len();
+        let assignee_type = payload.assignee_type.clone();
+        
+        // Spawn async task untuk send notification (tidak block response)
+        let db_clone = data.db.clone();
+        actix_web::rt::spawn(async move {
+            log::info!("🔔 Sending patrol assignment notification to {} {}", assignee_type, assignee_id_str);
+            
+            // Get FCM tokens based on assignee type
+            let fcm_tokens: Vec<String> = if assignee_type == "group" {
+                // Get all employees in the group
+                match db_clone
+                    .query("SELECT fcm_token FROM employee WHERE type::string(group_id) = type::string($group_id) AND fcm_token != NONE")
+                    .bind(("group_id", assignee_id_str.clone()))
+                    .await
+                {
+                    Ok(mut result) => {
+                        let employees: Vec<serde_json::Value> = result.take(0).unwrap_or_default();
+                        employees
+                            .iter()
+                            .filter_map(|e| e.get("fcm_token").and_then(|t| t.as_str()).map(String::from))
+                            .collect()
+                    }
+                    Err(e) => {
+                        log::error!("Failed to get group members: {}", e);
+                        vec![]
+                    }
+                }
+            } else {
+                // Get single employee FCM token
+                // assignee_id_str is just the ID part (e.g., "ihg8kdl4b4w3eefzpkin")
+                // We need to query by ID directly
+                match db_clone
+                    .query("SELECT fcm_token FROM employee WHERE type::string(id) = type::string($emp_id) AND fcm_token != NONE")
+                    .bind(("emp_id", format!("employee:{}", assignee_id_str)))
+                    .await
+                {
+                    Ok(mut result) => {
+                        let employees: Vec<serde_json::Value> = result.take(0).unwrap_or_default();
+                        log::debug!("Query result for employee:{}: {:?}", assignee_id_str, employees);
+                        employees
+                            .iter()
+                            .filter_map(|e| e.get("fcm_token").and_then(|t| t.as_str()).map(String::from))
+                            .collect()
+                    }
+                    Err(e) => {
+                        log::error!("Failed to get employee FCM token: {}", e);
+                        vec![]
+                    }
+                }
+            };
+
+            if fcm_tokens.is_empty() {
+                log::warn!("No FCM tokens found for {} {}. Trying alternative query...", assignee_type, assignee_id_str);
+                
+                // ✅ FALLBACK: Try query by ID without table prefix
+                let fallback_tokens: Vec<String> = match db_clone
+                    .query("SELECT fcm_token FROM employee WHERE id CONTAINS $id_part AND fcm_token != NONE")
+                    .bind(("id_part", assignee_id_str.clone()))
+                    .await
+                {
+                    Ok(mut result) => {
+                        let employees: Vec<serde_json::Value> = result.take(0).unwrap_or_default();
+                        log::debug!("Fallback query result: {:?}", employees);
+                        employees
+                            .iter()
+                            .filter_map(|e| e.get("fcm_token").and_then(|t| t.as_str()).map(String::from))
+                            .collect()
+                    }
+                    Err(e) => {
+                        log::error!("Fallback query failed: {}", e);
+                        vec![]
+                    }
+                };
+                
+                if fallback_tokens.is_empty() {
+                    log::error!("❌ No FCM tokens found even with fallback query. Employee may not have logged in or FCM token not saved.");
+                    return;
+                }
+                
+                log::info!("Found {} FCM token(s) from fallback query", fallback_tokens.len());
+                
+                // Send with fallback tokens
+                let project_id = std::env::var("FIREBASE_PROJECT_ID")
+                    .unwrap_or_else(|_| "smart-attendance-eef71".to_string());
+                
+                let title = "🚨 Penugasan Patroli Baru!";
+                let body = format!(
+                    "Shift {}–{} • {} titik checkpoint. Tap untuk membuka aplikasi.",
+                    start_time, end_time, checkpoint_count
+                );
+
+                for token in fallback_tokens {
+                    match send_fcm_notification(&project_id, &token, title, &body).await {
+                        Ok(_) => log::info!("✅ FCM notification sent successfully to token: {}...", &token[..20.min(token.len())]),
+                        Err(e) => log::error!("❌ Failed to send FCM notification: {}", e),
+                    }
+                }
+                
+                return;
+            }
+
+            log::info!("Found {} FCM token(s) for notification", fcm_tokens.len());
+
+            // Send notification to all tokens
+            let project_id = std::env::var("FIREBASE_PROJECT_ID")
+                .unwrap_or_else(|_| "smart-attendance-eef71".to_string());
+            
+            let title = "🚨 Penugasan Patroli Baru!";
+            let body = format!(
+                "Shift {}–{} • {} titik checkpoint. Tap untuk membuka aplikasi.",
+                start_time, end_time, checkpoint_count
+            );
+
+            for token in fcm_tokens {
+                match send_fcm_notification(&project_id, &token, title, &body).await {
+                    Ok(_) => log::info!("✅ FCM notification sent successfully to token: {}...", &token[..20.min(token.len())]),
+                    Err(e) => log::error!("❌ Failed to send FCM notification: {}", e),
+                }
+            }
+        });
+
+        Ok(created_assignment)
     }
 
     pub async fn get_patrol_assignments(
@@ -386,27 +607,63 @@ impl PatrolViewModel {
         } else {
             id
         };
+        
+        // Build update query dynamically to only update provided fields
+        let mut query = String::from("UPDATE type::thing($thing) SET updated_at = time::now()");
+        
+        // Clone values to avoid lifetime issues
+        let assignee_type_val = payload.assignee_type.clone();
+        let assignee_id_val = payload.assignee_id.clone();
+        let start_time_val = payload.start_time.clone();
+        let end_time_val = payload.end_time.clone();
+        let status_val = payload.status.clone();
+        let checkpoints_val = payload.checkpoints.clone();
+        
+        if assignee_type_val.is_some() && assignee_id_val.is_some() {
+            query.push_str(", assignee_type = $assignee_type, assignee_id = type::thing($assignee_table, $assignee_id)");
+        }
+        if start_time_val.is_some() {
+            query.push_str(", start_time = $start_time");
+        }
+        if end_time_val.is_some() {
+            query.push_str(", end_time = $end_time");
+        }
+        if status_val.is_some() {
+            query.push_str(", status = $status");
+        }
+        if checkpoints_val.is_some() {
+            query.push_str(", checkpoints = $checkpoints");
+        }
+        
         let thing = Thing::from(("patrol_assignments", Id::from(id_part)));
+        let mut db_query = data.db.query(&query).bind(("thing", thing));
         
-        let mut existing_res = data.db.query("SELECT * FROM type::thing($thing)").bind(("thing", thing.clone())).await.map_err(|e| e.to_string())?;
-        let existing: Option<PatrolAssignment> = existing_res.take(0).map_err(|e| e.to_string())?;
+        if let (Some(a_type), Some(a_id)) = (assignee_type_val, assignee_id_val) {
+            let table = if a_type == "group" { "groups".to_string() } else { "employees".to_string() };
+            db_query = db_query
+                .bind(("assignee_type", a_type))
+                .bind(("assignee_table", table))
+                .bind(("assignee_id", a_id));
+        }
+        if let Some(start) = start_time_val {
+            db_query = db_query.bind(("start_time", start));
+        }
+        if let Some(end) = end_time_val {
+            db_query = db_query.bind(("end_time", end));
+        }
+        if let Some(status) = status_val {
+            db_query = db_query.bind(("status", status));
+        }
+        if let Some(cps) = checkpoints_val {
+            let checkpoint_things: Vec<Thing> = cps.iter()
+                .map(|c| Thing::from(("patrol_checkpoints", Id::from(c.as_str()))))
+                .collect();
+            db_query = db_query.bind(("checkpoints", checkpoint_things));
+        }
         
-        let mut existing = existing.ok_or_else(|| "Assignment not found".to_string())?;
-
-        if let (Some(a_type), Some(a_id)) = (&payload.assignee_type, &payload.assignee_id) {
-            let table = if a_type == "group" { "groups" } else { "employees" };
-            existing.assignee_type = a_type.clone();
-            existing.assignee_id = Thing::from((table, Id::from(a_id.as_str())));
-        }
-        if let Some(start) = &payload.start_time { existing.start_time = start.clone(); }
-        if let Some(end) = &payload.end_time { existing.end_time = end.clone(); }
-        if let Some(status) = &payload.status { existing.status = status.clone(); }
-        if let Some(cps) = &payload.checkpoints {
-            existing.checkpoints = cps.iter().map(|c| Thing::from(("patrol_checkpoints", Id::from(c.as_str())))).collect();
-        }
-        existing.updated_at = None;  // Let DB set with DEFAULT time::now()
-
-        let updated: Option<PatrolAssignment> = data.db.update(("patrol_assignments", id_part)).content(existing).await.map_err(|e| e.to_string())?;
+        let mut result = db_query.await.map_err(|e| e.to_string())?;
+        let updated: Option<PatrolAssignment> = result.take(0).map_err(|e| e.to_string())?;
+        
         updated.ok_or_else(|| "Failed to update assignment".to_string())
     }
 
@@ -481,7 +738,7 @@ impl PatrolViewModel {
             let mut details = Vec::new();
             let mut visited_count = 0usize;
             let mut first_area_id: Option<String> = None;
-            let mut first_area_name: Option<String> = None;
+            let first_area_name: Option<String> = None;
             let cp_arr_len;
 
             if !val.checkpoints.is_empty() {
@@ -612,25 +869,49 @@ impl PatrolViewModel {
     /// Save a base64 photo to disk and return the URL path.
     fn save_photo(photo_base64: &str, prefix: &str) -> Option<String> {
         use std::fs;
+        
+        log::info!("Attempting to save photo with prefix: {}", prefix);
+        log::debug!("Photo base64 length: {}", photo_base64.len());
+        
         let upload_dir = "uploads/patrol";
-        if fs::create_dir_all(upload_dir).is_err() {
+        if let Err(e) = fs::create_dir_all(upload_dir) {
+            log::error!("Failed to create upload directory: {}", e);
             return None;
         }
+        
         let filename = format!("{}_{}.jpg", prefix, uuid::Uuid::new_v4());
         let path = format!("{}/{}", upload_dir, filename);
+        
+        log::debug!("Saving photo to: {}", path);
+        
+        // Remove data:image/jpeg;base64, prefix if present
         let b64 = if let Some(idx) = photo_base64.find(',') {
             &photo_base64[idx + 1..]
         } else {
             photo_base64
         };
+        
         let bytes = match base64_decode(b64) {
-            Ok(b) => b,
-            Err(_) => return None,
+            Ok(b) => {
+                log::info!("Successfully decoded base64, size: {} bytes", b.len());
+                b
+            },
+            Err(e) => {
+                log::error!("Failed to decode base64: {}", e);
+                return None;
+            }
         };
-        if fs::write(&path, bytes).is_ok() {
-            Some(format!("/uploads/patrol/{}", filename))
-        } else {
-            None
+        
+        match fs::write(&path, &bytes) {
+            Ok(_) => {
+                let url = format!("/uploads/patrol/{}", filename);
+                log::info!("Photo saved successfully: {}", url);
+                Some(url)
+            },
+            Err(e) => {
+                log::error!("Failed to write photo file: {}", e);
+                None
+            }
         }
     }
 
@@ -638,31 +919,63 @@ impl PatrolViewModel {
         payload: web::Json<crate::models::patrol::CreateCheckpointReportRequest>,
         data: &web::Data<AppState>,
     ) -> Result<crate::models::patrol::CheckpointReport, String> {
+        log::info!("Creating checkpoint report for checkpoint: {}", payload.checkpoint_id);
+        log::info!("Has photo_base64: {}", payload.photo_base64.is_some());
+        
         let photo_url = payload.photo_base64.as_deref()
-            .and_then(|b64| Self::save_photo(b64, "cp_report"));
+            .and_then(|b64| {
+                log::info!("Photo base64 provided, length: {}", b64.len());
+                let result = Self::save_photo(b64, "cp_report");
+                if result.is_none() {
+                    log::error!("Failed to save checkpoint report photo!");
+                }
+                result
+            });
+        
+        log::info!("Photo URL after save: {:?}", photo_url);
 
-        let now = surrealdb::sql::Datetime::default(); // Current datetime in SurrealDB format
+        // Use query to let database set created_at and updated_at with DEFAULT time::now()
+        let query = r#"
+            CREATE checkpoint_reports CONTENT {
+                assignment_id: $assignment_id,
+                checkpoint_id: $checkpoint_id,
+                nik: $nik,
+                report: $report,
+                photo_url: $photo_url
+            }
+        "#;
 
-        let report = crate::models::patrol::CheckpointReport {
-            id: None,
-            assignment_id: payload.assignment_id.clone(),
-            checkpoint_id: payload.checkpoint_id.clone(),
-            nik: payload.nik.clone(),
-            report: payload.report.clone(),
-            photo_url,
-            photo_base64: None,
-            created_at: Some(now.clone()),
-            updated_at: Some(now),
-        };
+        // Clone photo_url to avoid lifetime issues
+        let photo_url_for_binding = photo_url.clone();
+        
+        log::info!("Binding photo_url: {:?}", photo_url_for_binding);
 
-        let created: Option<crate::models::patrol::CheckpointReport> = data
+        let mut result = data
             .db
-            .create("checkpoint_reports")
-            .content(report)
+            .query(query)
+            .bind(("assignment_id", payload.assignment_id.clone()))
+            .bind(("checkpoint_id", payload.checkpoint_id.clone()))
+            .bind(("nik", payload.nik.clone()))
+            .bind(("report", payload.report.clone()))
+            .bind(("photo_url", photo_url_for_binding))
             .await
-            .map_err(|e| format!("Failed to create checkpoint report: {}", e))?;
+            .map_err(|e| {
+                log::error!("Database error creating checkpoint report: {}", e);
+                format!("Failed to create checkpoint report: {}", e)
+            })?;
 
-        created.ok_or_else(|| "Failed to return created checkpoint report".to_string())
+        let created: Option<crate::models::patrol::CheckpointReport> = result
+            .take(0)
+            .map_err(|e| {
+                log::error!("Failed to parse created checkpoint report: {}", e);
+                format!("Failed to parse created checkpoint report: {}", e)
+            })?;
+
+        let report = created.ok_or_else(|| "Failed to return created checkpoint report".to_string())?;
+        
+        log::info!("Checkpoint report created successfully with photo_url: {:?}", report.photo_url);
+        
+        Ok(report)
     }
 
     pub async fn get_checkpoint_reports(
@@ -702,22 +1015,34 @@ impl PatrolViewModel {
         data: &web::Data<AppState>,
     ) -> Result<crate::models::patrol::CheckpointReport, String> {
         let id_part = if id.contains(':') { id.split(':').last().unwrap_or(id) } else { id };
-        let existing: Option<crate::models::patrol::CheckpointReport> = data
-            .db
-            .select(("checkpoint_reports", id_part))
-            .await
-            .map_err(|e| format!("Database error: {}", e))?;
-        let mut existing = existing.ok_or_else(|| "Checkpoint report not found".to_string())?;
-        if let Some(report_text) = &payload.report { existing.report = report_text.clone(); }
-        if let Some(b64) = &payload.photo_base64 { existing.photo_url = Self::save_photo(b64, "cp_report"); }
-        existing.updated_at = Some(surrealdb::sql::Datetime::default());
-        existing.photo_base64 = None;
-        let updated: Option<crate::models::patrol::CheckpointReport> = data
-            .db
-            .update(("checkpoint_reports", id_part))
-            .content(existing)
-            .await
-            .map_err(|e| format!("Failed to update checkpoint report: {}", e))?;
+        
+        // Build update query dynamically
+        let mut query = String::from("UPDATE type::thing($thing) SET updated_at = time::now()");
+        
+        // Clone values to avoid lifetime issues
+        let report_val = payload.report.clone();
+        let photo_url_val = payload.photo_base64.as_ref().and_then(|base64| Self::save_photo(base64, "cp_report"));
+        
+        if report_val.is_some() {
+            query.push_str(", report = $report");
+        }
+        if photo_url_val.is_some() {
+            query.push_str(", photo_url = $photo_url");
+        }
+        
+        let thing = Thing::from(("checkpoint_reports", Id::from(id_part)));
+        let mut db_query = data.db.query(&query).bind(("thing", thing));
+        
+        if let Some(report_text) = report_val {
+            db_query = db_query.bind(("report", report_text));
+        }
+        if let Some(photo_url) = photo_url_val {
+            db_query = db_query.bind(("photo_url", photo_url));
+        }
+        
+        let mut result = db_query.await.map_err(|e| format!("Failed to update checkpoint report: {}", e))?;
+        let updated: Option<crate::models::patrol::CheckpointReport> = result.take(0).map_err(|e| e.to_string())?;
+        
         updated.ok_or_else(|| "Failed to update checkpoint report".to_string())
     }
 
@@ -742,21 +1067,47 @@ impl PatrolViewModel {
         data: &web::Data<AppState>,
     ) -> Result<PatrolIncident, String> {
         let id_part = if id.contains(':') { id.split(':').last().unwrap_or(id) } else { id };
-        let existing: Option<PatrolIncident> = data
-            .db
-            .select(("patrol_incidents", id_part))
-            .await
-            .map_err(|e| format!("Database error: {}", e))?;
-        let mut existing = existing.ok_or_else(|| "Incident not found".to_string())?;
-        if let Some(title) = &payload.title { existing.title = title.clone(); }
-        if let Some(desc) = &payload.description { existing.description = desc.clone(); }
-        if let Some(b64) = &payload.photo_base64 { existing.photo_base64 = Some(b64.clone()); }
-        let updated: Option<PatrolIncident> = data
-            .db
-            .update(("patrol_incidents", id_part))
-            .content(existing)
-            .await
-            .map_err(|e| format!("Failed to update incident: {}", e))?;
+        
+        // Build update query dynamically
+        let mut query = String::from("UPDATE type::thing($thing)");
+        let mut updates = Vec::new();
+        
+        // Clone values to avoid lifetime issues
+        let title_val = payload.title.clone();
+        let description_val = payload.description.clone();
+        let photo_base64_val = payload.photo_base64.clone();
+        
+        if title_val.is_some() {
+            updates.push("title = $title");
+        }
+        if description_val.is_some() {
+            updates.push("description = $description");
+        }
+        if photo_base64_val.is_some() {
+            updates.push("photo_base64 = $photo_base64");
+        }
+        
+        if !updates.is_empty() {
+            query.push_str(" SET ");
+            query.push_str(&updates.join(", "));
+        }
+        
+        let thing = Thing::from(("patrol_incidents", Id::from(id_part)));
+        let mut db_query = data.db.query(&query).bind(("thing", thing));
+        
+        if let Some(title) = title_val {
+            db_query = db_query.bind(("title", title));
+        }
+        if let Some(desc) = description_val {
+            db_query = db_query.bind(("description", desc));
+        }
+        if let Some(b64) = photo_base64_val {
+            db_query = db_query.bind(("photo_base64", b64));
+        }
+        
+        let mut result = db_query.await.map_err(|e| format!("Failed to update incident: {}", e))?;
+        let updated: Option<PatrolIncident> = result.take(0).map_err(|e| e.to_string())?;
+        
         updated.ok_or_else(|| "Failed to update incident".to_string())
     }
 
