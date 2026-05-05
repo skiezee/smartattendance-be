@@ -368,3 +368,145 @@ pub async fn scan_checkpoint(
         }
     }
 }
+
+// --- Checkpoint Report Handlers ---
+
+pub async fn create_checkpoint_report(
+    req: web::Json<crate::models::patrol::CreateCheckpointReportRequest>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match PatrolViewModel::create_checkpoint_report(req, &data).await {
+        Ok(report) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "message": "Laporan checkpoint berhasil disimpan",
+            "data": report
+        })),
+        Err(e) => {
+            log::error!("Error creating checkpoint report: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}
+
+pub async fn get_checkpoint_reports(
+    query: web::Query<NikQuery>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match PatrolViewModel::get_checkpoint_reports(query.nik.as_deref(), &data).await {
+        Ok(reports) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "data": reports
+        })),
+        Err(e) => {
+            log::error!("Error getting checkpoint reports: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}
+
+pub async fn get_checkpoint_report(
+    path: web::Path<String>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match PatrolViewModel::get_checkpoint_report_by_id(&path, &data).await {
+        Ok(report) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "data": report
+        })),
+        Err(e) => {
+            log::error!("Error getting checkpoint report {}: {}", path, e);
+            HttpResponse::NotFound().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}
+
+pub async fn update_checkpoint_report(
+    path: web::Path<String>,
+    req: web::Json<crate::models::patrol::UpdateCheckpointReportRequest>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match PatrolViewModel::update_checkpoint_report(&path, req, &data).await {
+        Ok(report) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "message": "Laporan checkpoint berhasil diperbarui",
+            "data": report
+        })),
+        Err(e) => {
+            log::error!("Error updating checkpoint report {}: {}", path, e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}
+
+pub async fn delete_checkpoint_report(
+    path: web::Path<String>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match PatrolViewModel::delete_checkpoint_report_by_id(&path, &data).await {
+        Ok(_) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "message": "Laporan checkpoint berhasil dihapus"
+        })),
+        Err(e) => {
+            log::error!("Error deleting checkpoint report {}: {}", path, e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}
+
+// --- Incident Update/Delete Handlers ---
+
+pub async fn update_incident(
+    path: web::Path<String>,
+    req: web::Json<crate::models::patrol::UpdateIncidentRequest>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match PatrolViewModel::update_incident(&path, req, &data).await {
+        Ok(incident) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "message": "Insiden berhasil diperbarui",
+            "data": incident
+        })),
+        Err(e) => {
+            log::error!("Error updating incident {}: {}", path, e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}
+
+pub async fn delete_incident(
+    path: web::Path<String>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    match PatrolViewModel::delete_incident(&path, &data).await {
+        Ok(_) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "message": "Insiden berhasil dihapus"
+        })),
+        Err(e) => {
+            log::error!("Error deleting incident {}: {}", path, e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": e
+            }))
+        }
+    }
+}

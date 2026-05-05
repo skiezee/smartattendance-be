@@ -75,6 +75,7 @@ async fn main() -> std::io::Result<()> {
     
     // Create uploads directory if it doesn't exist
     std::fs::create_dir_all("uploads/profile_photos").ok();
+    std::fs::create_dir_all("uploads/patrol").ok();
 
     HttpServer::new(move || {
         let cors = Cors::default()
