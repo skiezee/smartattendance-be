@@ -56,6 +56,10 @@ impl PatrolViewModel {
         let employee = &employees[0];
         let employee_id = employee.id.clone().ok_or("Employee ID not found")?;
 
+        // Save photo to file system if provided
+        let photo_url = payload.photo_base64.as_deref()
+            .and_then(|b64| Self::save_photo(b64, "incident"));
+
         // Create the incident record
         let incident = PatrolIncident {
             id: None,
@@ -66,7 +70,8 @@ impl PatrolViewModel {
             latitude: payload.latitude,
             longitude: payload.longitude,
             timestamp: payload.timestamp.clone(),
-            photo_base64: payload.photo_base64.clone(),
+            photo_url,
+            photo_base64: None, // Don't store base64 in DB
             created_at: Local::now().to_rfc3339(),
         };
 
@@ -133,12 +138,13 @@ impl PatrolViewModel {
         payload: web::Json<crate::models::patrol::CreateAreaRequest>,
         data: &web::Data<AppState>,
     ) -> Result<crate::models::patrol::PatrolArea, String> {
+        // Don't send created_at/updated_at - let database handle with DEFAULT
         let area = crate::models::patrol::PatrolArea {
             id: None,
             name: payload.name.clone(),
             description: payload.description.clone(),
-            created_at: Some(Local::now().to_rfc3339()),
-            updated_at: Some(Local::now().to_rfc3339()),
+            created_at: None,  // Let DB set with DEFAULT time::now()
+            updated_at: None,  // Let DB set with DEFAULT time::now()
         };
 
         let created: Option<crate::models::patrol::PatrolArea> = data
@@ -211,13 +217,13 @@ impl PatrolViewModel {
             latitude: payload.latitude,
             longitude: payload.longitude,
             description: payload.description.clone(),
-            created_at: Some(Local::now().to_rfc3339()),
-            updated_at: Some(Local::now().to_rfc3339()),
+            created_at: None,  // Let DB set with DEFAULT time::now()
+            updated_at: None,  // Let DB set with DEFAULT time::now()
         };
 
         let created: Option<Checkpoint> = data
             .db
-            .create("checkpoints")
+            .create("patrol_checkpoints")  // Use correct table name
             .content(checkpoint)
             .await
             .map_err(|e| format!("Failed to create checkpoint: {}", e))?;
@@ -230,7 +236,7 @@ impl PatrolViewModel {
     ) -> Result<Vec<Checkpoint>, String> {
         let mut result = data
             .db
-            .query("SELECT * FROM checkpoints ORDER BY created_at DESC")
+            .query("SELECT * FROM patrol_checkpoints ORDER BY created_at DESC")
             .await
             .map_err(|e| format!("Database query error: {}", e))?;
 
@@ -246,7 +252,7 @@ impl PatrolViewModel {
         payload: web::Json<UpdateCheckpointRequest>,
         data: &web::Data<AppState>,
     ) -> Result<Checkpoint, String> {
-        let thing = Thing::from(("checkpoints", Id::from(id)));
+        let thing = Thing::from(("patrol_checkpoints", Id::from(id)));
         
         let mut updates = Vec::new();
         if let Some(area_id) = &payload.area_id { updates.push(format!("area_id = type::thing('patrol_areas:{}')", area_id)); }
@@ -269,7 +275,7 @@ impl PatrolViewModel {
         id: &str,
         data: &web::Data<AppState>,
     ) -> Result<String, String> {
-        let _: Option<Checkpoint> = data.db.delete(("checkpoints", id)).await.map_err(|e| e.to_string())?;
+        let _: Option<Checkpoint> = data.db.delete(("patrol_checkpoints", id)).await.map_err(|e| e.to_string())?;
         Ok("Checkpoint deleted successfully".to_string())
     }
 
@@ -282,9 +288,10 @@ impl PatrolViewModel {
         let table = if payload.assignee_type == "group" { "groups" } else { "employee" };
         let assignee_thing = Thing::from((table, Id::from(payload.assignee_id.as_str())));
         
+        // Convert checkpoint IDs to Thing references with correct table name
         let checkpoint_things: Vec<Thing> = payload.checkpoints
             .iter()
-            .map(|cp_id| Thing::from(("checkpoints", Id::from(cp_id.as_str()))))
+            .map(|cp_id| Thing::from(("patrol_checkpoints", Id::from(cp_id.as_str()))))
             .collect();
 
         let assignment = PatrolAssignment {
@@ -295,8 +302,8 @@ impl PatrolViewModel {
             end_time: payload.end_time.clone(),
             checkpoints: checkpoint_things,
             status: "scheduled".to_string(),
-            created_at: Some(Local::now().to_rfc3339()),
-            updated_at: Some(Local::now().to_rfc3339()),
+            created_at: None,  // Let DB set with DEFAULT time::now()
+            updated_at: None,  // Let DB set with DEFAULT time::now()
         };
 
         let created: Option<PatrolAssignment> = data
@@ -395,9 +402,9 @@ impl PatrolViewModel {
         if let Some(end) = &payload.end_time { existing.end_time = end.clone(); }
         if let Some(status) = &payload.status { existing.status = status.clone(); }
         if let Some(cps) = &payload.checkpoints {
-            existing.checkpoints = cps.iter().map(|c| Thing::from(("checkpoints", Id::from(c.as_str())))).collect();
+            existing.checkpoints = cps.iter().map(|c| Thing::from(("patrol_checkpoints", Id::from(c.as_str())))).collect();
         }
-        existing.updated_at = Some(Local::now().to_rfc3339());
+        existing.updated_at = None;  // Let DB set with DEFAULT time::now()
 
         let updated: Option<PatrolAssignment> = data.db.update(("patrol_assignments", id_part)).content(existing).await.map_err(|e| e.to_string())?;
         updated.ok_or_else(|| "Failed to update assignment".to_string())
@@ -561,7 +568,7 @@ impl PatrolViewModel {
         data: &web::Data<AppState>,
     ) -> Result<String, String> {
         let assignment_id = Thing::from(("patrol_assignments", Id::from(payload.assignment_id.as_str())));
-        let checkpoint_id = Thing::from(("checkpoints", Id::from(payload.checkpoint_id.as_str())));
+        let checkpoint_id = Thing::from(("patrol_checkpoints", Id::from(payload.checkpoint_id.as_str())));
 
         let log_entry = crate::models::patrol::PatrolLog {
             id: None,
@@ -634,6 +641,8 @@ impl PatrolViewModel {
         let photo_url = payload.photo_base64.as_deref()
             .and_then(|b64| Self::save_photo(b64, "cp_report"));
 
+        let now = surrealdb::sql::Datetime::default(); // Current datetime in SurrealDB format
+
         let report = crate::models::patrol::CheckpointReport {
             id: None,
             assignment_id: payload.assignment_id.clone(),
@@ -642,8 +651,8 @@ impl PatrolViewModel {
             report: payload.report.clone(),
             photo_url,
             photo_base64: None,
-            created_at: Some(Local::now().to_rfc3339()),
-            updated_at: Some(Local::now().to_rfc3339()),
+            created_at: Some(now.clone()),
+            updated_at: Some(now),
         };
 
         let created: Option<crate::models::patrol::CheckpointReport> = data
@@ -701,7 +710,7 @@ impl PatrolViewModel {
         let mut existing = existing.ok_or_else(|| "Checkpoint report not found".to_string())?;
         if let Some(report_text) = &payload.report { existing.report = report_text.clone(); }
         if let Some(b64) = &payload.photo_base64 { existing.photo_url = Self::save_photo(b64, "cp_report"); }
-        existing.updated_at = Some(Local::now().to_rfc3339());
+        existing.updated_at = Some(surrealdb::sql::Datetime::default());
         existing.photo_base64 = None;
         let updated: Option<crate::models::patrol::CheckpointReport> = data
             .db

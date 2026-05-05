@@ -29,7 +29,8 @@ pub struct PatrolIncident {
     pub latitude: f64,
     pub longitude: f64,
     pub timestamp: String,
-    pub photo_base64: Option<String>,
+    pub photo_url: Option<String>,   // URL path to saved photo file
+    pub photo_base64: Option<String>, // Base64 for backward compat (not stored, only accepted)
     pub created_at: String,
 }
 
@@ -216,9 +217,10 @@ pub struct CheckpointReport {
     pub nik: String,
     pub report: String,
     pub photo_url: Option<String>,   // URL path to saved photo file
+    #[serde(skip_serializing)]
     pub photo_base64: Option<String>, // Base64 for backward compat (not stored, only accepted)
-    pub created_at: Option<String>,
-    pub updated_at: Option<String>,
+    pub created_at: Option<surrealdb::sql::Datetime>,
+    pub updated_at: Option<surrealdb::sql::Datetime>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
