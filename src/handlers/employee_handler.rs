@@ -213,7 +213,10 @@ pub async fn update_employee(
                             };
                             
                             // Build update query using record ID
-                            let update_query = if password_hash.is_some() {
+                            // Only update attendance_requirement if explicitly provided
+                            let update_attendance = req.attendance_requirement.is_some();
+
+                            let base_fields = if password_hash.is_some() {
                                 format!(
                                     r#"UPDATE {} SET
                                         full_name = $full_name,
@@ -222,16 +225,14 @@ pub async fn update_employee(
                                         role = $role,
                                         department = $department,
                                         status = $status,
+                                        employment_status = $status,
                                         phone = $phone,
                                         address = $address,
                                         date_of_birth = $date_of_birth,
                                         hire_date = $hire_date,
                                         position = $position,
                                         emergency_contact = $emergency_contact,
-                                        emergency_phone = $emergency_phone,
-                                        attendance_requirement = $attendance_requirement,
-                                        updated_at = time::now()
-                                    RETURN AFTER"#,
+                                        emergency_phone = $emergency_phone,"#,
                                     record_id
                                 )
                             } else {
@@ -242,18 +243,22 @@ pub async fn update_employee(
                                         role = $role,
                                         department = $department,
                                         status = $status,
+                                        employment_status = $status,
                                         phone = $phone,
                                         address = $address,
                                         date_of_birth = $date_of_birth,
                                         hire_date = $hire_date,
                                         position = $position,
                                         emergency_contact = $emergency_contact,
-                                        emergency_phone = $emergency_phone,
-                                        attendance_requirement = $attendance_requirement,
-                                        updated_at = time::now()
-                                    RETURN AFTER"#,
+                                        emergency_phone = $emergency_phone,"#,
                                     record_id
                                 )
+                            };
+
+                            let update_query = if update_attendance {
+                                format!("{}\n attendance_requirement = $attendance_requirement,\n updated_at = time::now()\n RETURN AFTER", base_fields)
+                            } else {
+                                format!("{}\n updated_at = time::now()\n RETURN AFTER", base_fields)
                             };
                             
                             let mut db_query = data.db.query(&update_query)
@@ -268,9 +273,12 @@ pub async fn update_employee(
                                 .bind(("hire_date", req.hire_date.clone()))
                                 .bind(("position", req.position.clone()))
                                 .bind(("emergency_contact", req.emergency_contact.clone()))
-                                .bind(("emergency_phone", req.emergency_phone.clone()))
-                                .bind(("attendance_requirement", req.attendance_requirement.clone()));
-                            
+                                .bind(("emergency_phone", req.emergency_phone.clone()));
+
+                            if update_attendance {
+                                db_query = db_query.bind(("attendance_requirement", req.attendance_requirement.clone()));
+                            }
+
                             if let Some(hash) = password_hash {
                                 db_query = db_query.bind(("password_hash", hash));
                             }

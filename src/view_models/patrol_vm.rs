@@ -599,4 +599,193 @@ impl PatrolViewModel {
 
         Ok(tracking_data)
     }
+
+    // ─── Checkpoint Report Methods ────────────────────────────────────────────
+
+    /// Save a base64 photo to disk and return the URL path.
+    fn save_photo(photo_base64: &str, prefix: &str) -> Option<String> {
+        use std::fs;
+        let upload_dir = "uploads/patrol";
+        if fs::create_dir_all(upload_dir).is_err() {
+            return None;
+        }
+        let filename = format!("{}_{}.jpg", prefix, uuid::Uuid::new_v4());
+        let path = format!("{}/{}", upload_dir, filename);
+        let b64 = if let Some(idx) = photo_base64.find(',') {
+            &photo_base64[idx + 1..]
+        } else {
+            photo_base64
+        };
+        let bytes = match base64_decode(b64) {
+            Ok(b) => b,
+            Err(_) => return None,
+        };
+        if fs::write(&path, bytes).is_ok() {
+            Some(format!("/uploads/patrol/{}", filename))
+        } else {
+            None
+        }
+    }
+
+    pub async fn create_checkpoint_report(
+        payload: web::Json<crate::models::patrol::CreateCheckpointReportRequest>,
+        data: &web::Data<AppState>,
+    ) -> Result<crate::models::patrol::CheckpointReport, String> {
+        let photo_url = payload.photo_base64.as_deref()
+            .and_then(|b64| Self::save_photo(b64, "cp_report"));
+
+        let report = crate::models::patrol::CheckpointReport {
+            id: None,
+            assignment_id: payload.assignment_id.clone(),
+            checkpoint_id: payload.checkpoint_id.clone(),
+            nik: payload.nik.clone(),
+            report: payload.report.clone(),
+            photo_url,
+            photo_base64: None,
+            created_at: Some(Local::now().to_rfc3339()),
+            updated_at: Some(Local::now().to_rfc3339()),
+        };
+
+        let created: Option<crate::models::patrol::CheckpointReport> = data
+            .db
+            .create("checkpoint_reports")
+            .content(report)
+            .await
+            .map_err(|e| format!("Failed to create checkpoint report: {}", e))?;
+
+        created.ok_or_else(|| "Failed to return created checkpoint report".to_string())
+    }
+
+    pub async fn get_checkpoint_reports(
+        nik: Option<&str>,
+        data: &web::Data<AppState>,
+    ) -> Result<Vec<crate::models::patrol::CheckpointReport>, String> {
+        let query = match nik {
+            Some(n) => format!(
+                "SELECT * FROM checkpoint_reports WHERE nik = '{}' ORDER BY created_at DESC", n
+            ),
+            None => "SELECT * FROM checkpoint_reports ORDER BY created_at DESC".to_string(),
+        };
+        let mut result = data.db.query(&query).await
+            .map_err(|e| format!("Database query error: {}", e))?;
+        let reports: Vec<crate::models::patrol::CheckpointReport> = result
+            .take(0)
+            .map_err(|e| format!("Failed to parse checkpoint reports: {}", e))?;
+        Ok(reports)
+    }
+
+    pub async fn get_checkpoint_report_by_id(
+        id: &str,
+        data: &web::Data<AppState>,
+    ) -> Result<crate::models::patrol::CheckpointReport, String> {
+        let id_part = if id.contains(':') { id.split(':').last().unwrap_or(id) } else { id };
+        let result: Option<crate::models::patrol::CheckpointReport> = data
+            .db
+            .select(("checkpoint_reports", id_part))
+            .await
+            .map_err(|e| format!("Database error: {}", e))?;
+        result.ok_or_else(|| "Checkpoint report not found".to_string())
+    }
+
+    pub async fn update_checkpoint_report(
+        id: &str,
+        payload: web::Json<crate::models::patrol::UpdateCheckpointReportRequest>,
+        data: &web::Data<AppState>,
+    ) -> Result<crate::models::patrol::CheckpointReport, String> {
+        let id_part = if id.contains(':') { id.split(':').last().unwrap_or(id) } else { id };
+        let existing: Option<crate::models::patrol::CheckpointReport> = data
+            .db
+            .select(("checkpoint_reports", id_part))
+            .await
+            .map_err(|e| format!("Database error: {}", e))?;
+        let mut existing = existing.ok_or_else(|| "Checkpoint report not found".to_string())?;
+        if let Some(report_text) = &payload.report { existing.report = report_text.clone(); }
+        if let Some(b64) = &payload.photo_base64 { existing.photo_url = Self::save_photo(b64, "cp_report"); }
+        existing.updated_at = Some(Local::now().to_rfc3339());
+        existing.photo_base64 = None;
+        let updated: Option<crate::models::patrol::CheckpointReport> = data
+            .db
+            .update(("checkpoint_reports", id_part))
+            .content(existing)
+            .await
+            .map_err(|e| format!("Failed to update checkpoint report: {}", e))?;
+        updated.ok_or_else(|| "Failed to update checkpoint report".to_string())
+    }
+
+    pub async fn delete_checkpoint_report_by_id(
+        id: &str,
+        data: &web::Data<AppState>,
+    ) -> Result<(), String> {
+        let id_part = if id.contains(':') { id.split(':').last().unwrap_or(id) } else { id };
+        let _: Option<crate::models::patrol::CheckpointReport> = data
+            .db
+            .delete(("checkpoint_reports", id_part))
+            .await
+            .map_err(|e| format!("Failed to delete checkpoint report: {}", e))?;
+        Ok(())
+    }
+
+    // ─── Incident Update/Delete Methods ──────────────────────────────────────
+
+    pub async fn update_incident(
+        id: &str,
+        payload: web::Json<crate::models::patrol::UpdateIncidentRequest>,
+        data: &web::Data<AppState>,
+    ) -> Result<PatrolIncident, String> {
+        let id_part = if id.contains(':') { id.split(':').last().unwrap_or(id) } else { id };
+        let existing: Option<PatrolIncident> = data
+            .db
+            .select(("patrol_incidents", id_part))
+            .await
+            .map_err(|e| format!("Database error: {}", e))?;
+        let mut existing = existing.ok_or_else(|| "Incident not found".to_string())?;
+        if let Some(title) = &payload.title { existing.title = title.clone(); }
+        if let Some(desc) = &payload.description { existing.description = desc.clone(); }
+        if let Some(b64) = &payload.photo_base64 { existing.photo_base64 = Some(b64.clone()); }
+        let updated: Option<PatrolIncident> = data
+            .db
+            .update(("patrol_incidents", id_part))
+            .content(existing)
+            .await
+            .map_err(|e| format!("Failed to update incident: {}", e))?;
+        updated.ok_or_else(|| "Failed to update incident".to_string())
+    }
+
+    pub async fn delete_incident(
+        id: &str,
+        data: &web::Data<AppState>,
+    ) -> Result<(), String> {
+        let id_part = if id.contains(':') { id.split(':').last().unwrap_or(id) } else { id };
+        let _: Option<PatrolIncident> = data
+            .db
+            .delete(("patrol_incidents", id_part))
+            .await
+            .map_err(|e| format!("Failed to delete incident: {}", e))?;
+        Ok(())
+    }
+}
+
+/// Minimal base64 decoder (avoids adding a new dependency — uses std only)
+fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
+    // Remove whitespace/newlines that base64 encoders sometimes add
+    let clean: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut lookup = [0u8; 256];
+    for (i, &c) in alphabet.iter().enumerate() {
+        lookup[c as usize] = i as u8;
+    }
+    let bytes = clean.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
+    let mut i = 0;
+    while i + 3 < bytes.len() {
+        let b0 = lookup[bytes[i] as usize];
+        let b1 = lookup[bytes[i + 1] as usize];
+        let b2 = if bytes[i + 2] == b'=' { 0 } else { lookup[bytes[i + 2] as usize] };
+        let b3 = if bytes[i + 3] == b'=' { 0 } else { lookup[bytes[i + 3] as usize] };
+        out.push((b0 << 2) | (b1 >> 4));
+        if bytes[i + 2] != b'=' { out.push((b1 << 4) | (b2 >> 2)); }
+        if bytes[i + 3] != b'=' { out.push((b2 << 6) | b3); }
+        i += 4;
+    }
+    Ok(out)
 }

@@ -205,3 +205,42 @@ pub struct ScanCheckpointRequest {
     pub longitude: f64,
     pub status: Option<String>,
 }
+
+// --- Checkpoint Report Models ---
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CheckpointReport {
+    pub id: Option<Thing>,
+    pub assignment_id: String,
+    pub checkpoint_id: String,
+    pub nik: String,
+    pub report: String,
+    pub photo_url: Option<String>,   // URL path to saved photo file
+    pub photo_base64: Option<String>, // Base64 for backward compat (not stored, only accepted)
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CreateCheckpointReportRequest {
+    pub assignment_id: String,
+    pub checkpoint_id: String,
+    pub nik: String,
+    pub report: String,
+    pub photo_base64: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UpdateCheckpointReportRequest {
+    pub report: Option<String>,
+    pub photo_base64: Option<String>,
+}
+
+// --- Incident Update/Delete Models ---
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UpdateIncidentRequest {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub photo_base64: Option<String>,
+}

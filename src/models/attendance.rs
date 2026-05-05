@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
+use crate::models::employee::AttendanceRequirement;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FaceEnrollRequest {
@@ -45,6 +46,7 @@ pub struct CheckEnrollmentResponse {
     pub face_enrolled: bool,
     pub fingerprint_enrolled: bool,
     pub has_attended_today: bool,
+    pub attendance_requirement: Option<AttendanceRequirement>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -53,6 +55,7 @@ pub struct EmployeeStatus {
     pub nik: String,
     pub face_enrolled: bool,
     pub fingerprint_enrolled: bool,
+    pub attendance_requirement: Option<AttendanceRequirement>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
