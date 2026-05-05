@@ -38,6 +38,14 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/patrol/incident", web::post().to(patrol_handler::submit_incident))
             .route("/patrol/incidents", web::get().to(patrol_handler::get_all_incidents))
             .route("/patrol/incidents/{nik}", web::get().to(patrol_handler::get_incidents_by_nik))
+            .route("/patrol/incidents/{id}", web::put().to(patrol_handler::update_incident))
+            .route("/patrol/incidents/{id}", web::delete().to(patrol_handler::delete_incident))
+            // Checkpoint Reports
+            .route("/patrol/checkpoint-report", web::post().to(patrol_handler::create_checkpoint_report))
+            .route("/patrol/checkpoint-reports", web::get().to(patrol_handler::get_checkpoint_reports))
+            .route("/patrol/checkpoint-reports/{id}", web::get().to(patrol_handler::get_checkpoint_report))
+            .route("/patrol/checkpoint-reports/{id}", web::put().to(patrol_handler::update_checkpoint_report))
+            .route("/patrol/checkpoint-reports/{id}", web::delete().to(patrol_handler::delete_checkpoint_report))
             .route("/patrol/areas", web::get().to(patrol_handler::get_areas))
             .route("/patrol/areas", web::post().to(patrol_handler::create_area))
             .route("/patrol/areas/{id}", web::put().to(patrol_handler::update_area))
@@ -73,6 +81,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/wifi-settings/validate", web::post().to(wifi_handler::validate_wifi_ssid))
             .route("/wifi-settings", web::post().to(wifi_handler::create_wifi_setting))
             .route("/wifi-settings/{wifi_id}", web::patch().to(wifi_handler::update_wifi_setting))
+            .route("/wifi-settings/{wifi_id}", web::put().to(wifi_handler::update_wifi_setting))
             .route("/wifi-settings/{wifi_id}", web::delete().to(wifi_handler::delete_wifi_setting))
             // Location Boundary Routes
             .route("/location-boundaries", web::get().to(location_handler::get_location_boundaries))

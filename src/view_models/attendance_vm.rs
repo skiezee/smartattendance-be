@@ -14,7 +14,7 @@ impl AttendanceViewModel {
     ) -> Result<CheckEnrollmentResponse, String> {
         let mut result = data
             .db
-            .query("SELECT id, nik, face_enrolled, fingerprint_enrolled FROM employee WHERE nik = $nik")
+            .query("SELECT id, nik, face_enrolled, fingerprint_enrolled, attendance_requirement FROM employee WHERE nik = $nik")
             .bind(("nik", nik.clone()))
             .await
             .map_err(|e| {
@@ -60,6 +60,7 @@ impl AttendanceViewModel {
                 face_enrolled: employee.face_enrolled,
                 fingerprint_enrolled: employee.fingerprint_enrolled,
                 has_attended_today,
+                attendance_requirement: employee.attendance_requirement.clone(),
             })
         } else {
             Err("Employee not found".to_string())

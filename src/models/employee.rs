@@ -114,6 +114,10 @@ pub struct EmployeeResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_photo_url: Option<String>,
     pub attendance_requirement: Option<AttendanceRequirement>,
+    #[serde(default)]
+    pub face_enrolled: bool,
+    #[serde(default)]
+    pub fingerprint_enrolled: bool,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }

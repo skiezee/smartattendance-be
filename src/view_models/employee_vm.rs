@@ -51,8 +51,11 @@ impl EmployeeViewModel {
                     }
                     
                     // Map employment_status to status for backward compatibility
-                    if let Some(ref emp_status) = employee.employment_status {
-                        employee.status = Some(emp_status.clone());
+                    // Prefer the explicit `status` field if set, otherwise fall back to employment_status
+                    if employee.status.is_none() {
+                        if let Some(ref emp_status) = employee.employment_status {
+                            employee.status = Some(emp_status.clone());
+                        }
                     }
                 }
                 

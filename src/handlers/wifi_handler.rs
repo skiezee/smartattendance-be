@@ -249,35 +249,46 @@ pub async fn update_wifi_setting(
 ) -> impl Responder {
     info!("Updating WiFi setting: {}", wifi_id.clone());
 
-    let mut updates = Vec::new();
-    
-    if let Some(is_active) = req.is_active {
-        updates.push(format!("is_active = {}", is_active));
-    }
-    
-    if let Some(ref description) = req.description {
-        updates.push(format!("description = '{}'", description));
-    }
-
-    if updates.is_empty() {
+    if req.is_active.is_none() && req.description.is_none() {
         return HttpResponse::BadRequest().json(serde_json::json!({
             "success": false,
             "message": "No fields to update"
         }));
     }
 
-    updates.push("updated_at = time::now()".to_string());
-    let update_clause = updates.join(", ");
-
     let id_str = wifi_id.into_inner();
-    let target_id = if id_str.contains(":") {
+    let target_id = if id_str.contains(':') {
         id_str.clone()
     } else {
         format!("wifi_settings:{}", id_str)
     };
-    let query = format!("UPDATE {} SET {}", target_id, update_clause);
 
-    match data.db.query(&query).await {
+    // Build SET clause — only include fields that were provided
+    let mut set_parts = Vec::new();
+    if req.is_active.is_some() {
+        set_parts.push("is_active = $is_active");
+    }
+    if req.description.is_some() {
+        set_parts.push("description = $description");
+    }
+    set_parts.push("updated_at = time::now()");
+
+    let query = format!(
+        "UPDATE {} SET {} RETURN AFTER",
+        target_id,
+        set_parts.join(", ")
+    );
+
+    let mut db_query = data.db.query(&query);
+
+    if let Some(is_active) = req.is_active {
+        db_query = db_query.bind(("is_active", is_active));
+    }
+    if let Some(ref description) = req.description {
+        db_query = db_query.bind(("description", description.clone()));
+    }
+
+    match db_query.await {
         Ok(mut response) => {
             match response.take::<Vec<WiFiSetting>>(0) {
                 Ok(updated) => {
