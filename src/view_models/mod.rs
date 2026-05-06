@@ -6,3 +6,4 @@ pub mod leave_vm;
 pub mod patrol_vm;
 pub mod shift_vm;
 pub mod group_vm;
+pub mod shift_management_vm;

@@ -5,3 +5,4 @@ pub mod leave;
 pub mod patrol;
 pub mod shift;
 pub mod group;
+pub mod shift_management;

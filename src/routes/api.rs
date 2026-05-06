@@ -1,5 +1,5 @@
 use actix_web::web;
-use crate::handlers::{attendance_handler, auth_handler, dashboard_handler, employee_handler, group_handler, health_handler, leave_handler, location_handler, maintenance_handler, patrol_handler, profile_handler, shift_handler, wifi_handler};
+use crate::handlers::{attendance_handler, auth_handler, dashboard_handler, employee_handler, group_handler, health_handler, leave_handler, location_handler, maintenance_handler, patrol_handler, profile_handler, shift_handler, shift_management_handler, wifi_handler};
 
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -67,6 +67,19 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/shift/status", web::put().to(shift_handler::update_shift_status))
             .route("/shift/stats/{nik}", web::get().to(shift_handler::get_shift_stats))
             .route("/shift/{shift_id}", web::delete().to(shift_handler::delete_shift))
+            // Shift Management System Routes
+            .route("/shift-tasks", web::get().to(shift_management_handler::get_all_shift_tasks))
+            .route("/shift-tasks", web::post().to(shift_management_handler::create_shift_task))
+            .route("/shift-tasks/{id}", web::get().to(shift_management_handler::get_shift_task))
+            .route("/shift-tasks/{id}", web::put().to(shift_management_handler::update_shift_task))
+            .route("/shift-tasks/{id}", web::delete().to(shift_management_handler::delete_shift_task))
+            .route("/shift-tasks/{id}/groups", web::get().to(shift_management_handler::get_employee_groups))
+            .route("/shift-tasks/{id}/groups", web::put().to(shift_management_handler::save_employee_groups))
+            .route("/shift-tasks/{id}/available-employees", web::get().to(shift_management_handler::get_available_employees))
+            .route("/shift-tasks/{id}/schedules/generate", web::post().to(shift_management_handler::generate_schedule))
+            .route("/shift-tasks/{id}/schedules", web::get().to(shift_management_handler::get_schedules))
+            .route("/shift-tasks/{id}/schedules/{date}", web::put().to(shift_management_handler::update_schedule))
+            .route("/shift-tasks/{id}/schedules", web::delete().to(shift_management_handler::delete_schedules))
             // Dashboard Analytics Routes
             .route("/dashboard/analytics", web::get().to(dashboard_handler::get_dashboard_analytics))
             .route("/dashboard/overview", web::get().to(dashboard_handler::get_overview_only))
