@@ -14,24 +14,24 @@ use surrealdb::sql::{Thing, Id};
 use serde_json::Value;
 
 /// Helper: extract a string ID from a SurrealDB Value (handles Thing/Object/String variants)
-fn extract_id_from_value(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Object(m) => {
-            // SurrealDB Thing as JSON: {"tb": "table", "id": {"String": "xxx"}} or {"String": "xxx"}
-            if let Some(id_v) = m.get("id") {
-                let tb = m.get("tb").and_then(|t| t.as_str()).unwrap_or("");
-                let id_str = extract_id_from_value(id_v);
-                if tb.is_empty() { id_str } else { format!("{}:{}", tb, id_str) }
-            } else if let Some(s) = m.get("String").and_then(|t| t.as_str()) {
-                s.to_string()
-            } else {
-                serde_json::to_string(v).unwrap_or_default()
-            }
-        }
-        _ => serde_json::to_string(v).unwrap_or_default().trim_matches('"').to_string(),
-    }
-}
+// fn extract_id_from_value(v: &Value) -> String {
+//     match v {
+//         Value::String(s) => s.clone(),
+//         Value::Object(m) => {
+//             // SurrealDB Thing as JSON: {"tb": "table", "id": {"String": "xxx"}} or {"String": "xxx"}
+//             if let Some(id_v) = m.get("id") {
+//                 let tb = m.get("tb").and_then(|t| t.as_str()).unwrap_or("");
+//                 let id_str = extract_id_from_value(id_v);
+//                 if tb.is_empty() { id_str } else { format!("{}:{}", tb, id_str) }
+//             } else if let Some(s) = m.get("String").and_then(|t| t.as_str()) {
+//                 s.to_string()
+//             } else {
+//                 serde_json::to_string(v).unwrap_or_default()
+//             }
+//         }
+//         _ => serde_json::to_string(v).unwrap_or_default().trim_matches('"').to_string(),
+//     }
+// }
 
 pub struct PatrolViewModel;
 

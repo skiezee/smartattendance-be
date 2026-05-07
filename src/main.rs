@@ -4,6 +4,8 @@ mod models;
 mod routes;
 mod view_models;
 mod services;
+mod utils;
+mod middleware;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
@@ -69,6 +71,12 @@ async fn main() -> std::io::Result<()> {
 
     // Wrap the database client in web::Data to share it across routes
     let app_state = web::Data::new(AppState { db });
+
+    // Create default admin if not exists
+    log::info!("Initializing default admin...");
+    if let Err(e) = crate::view_models::admin_vm::AdminViewModel::create_default_admin(app_state.clone()).await {
+        log::warn!("Failed to create default admin: {}", e);
+    }
 
     // Start Actix Web Server
     log::info!("Starting Actix Web server on http://{}", server_addr);

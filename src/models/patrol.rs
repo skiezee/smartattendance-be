@@ -34,11 +34,11 @@ pub struct PatrolIncident {
     pub created_at: Option<surrealdb::sql::Datetime>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct GetIncidentsResponse {
-    pub status: String,
-    pub data: Vec<PatrolIncident>,
-}
+// #[derive(Serialize, Deserialize, Debug)]
+// pub struct GetIncidentsResponse {
+//     pub status: String,
+//     pub data: Vec<PatrolIncident>,
+// }
 
 // --- Area Models ---
 

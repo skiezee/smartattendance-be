@@ -1,3 +1,4 @@
+pub mod admin_vm;
 pub mod attendance_vm;
 pub mod auth_vm;
 pub mod dashboard_vm;

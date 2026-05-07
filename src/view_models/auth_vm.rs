@@ -1,6 +1,6 @@
 use crate::config::app_state::AppState;
 use crate::models::employee::{Employee, LoginRequest, LoginResponse, RegisterRequest, RegisterResponse};
-use crate::models::employee::FcmTokenRequest;
+use crate::utils::jwt;
 use actix_web::web;
 use bcrypt::{hash, verify, DEFAULT_COST};
 
@@ -41,9 +41,23 @@ impl AuthViewModel {
                                 log::info!("FCM token saved for NIK: {}", employee.nik);
                             }
 
+                            // Generate JWT token
+                            let token = jwt::generate_token(
+                                employee.nik.clone(),
+                                employee.full_name.clone(),
+                                employee.role.clone(),
+                            ).map_err(|e| {
+                                log::error!("Failed to generate JWT token: {}", e);
+                                "Failed to generate authentication token".to_string()
+                            })?;
+
                             return Ok(LoginResponse {
                                 status: "success".to_string(),
                                 message: format!("Welcome back, {}", employee.full_name),
+                                token: Some(token),
+                                nik: Some(employee.nik.clone()),
+                                name: Some(employee.full_name.clone()),
+                                role: Some(employee.role.clone()),
                             });
                         } else {
                             log::warn!("Password mismatch (bcrypt hash) for NIK: {}", req.nik);
@@ -60,9 +74,23 @@ impl AuthViewModel {
                             log::info!("FCM token saved for NIK: {}", employee.nik);
                         }
 
+                        // Generate JWT token
+                        let token = jwt::generate_token(
+                            employee.nik.clone(),
+                            employee.full_name.clone(),
+                            employee.role.clone(),
+                        ).map_err(|e| {
+                            log::error!("Failed to generate JWT token: {}", e);
+                            "Failed to generate authentication token".to_string()
+                        })?;
+
                         return Ok(LoginResponse {
                             status: "success".to_string(),
                             message: format!("Welcome back, {}", employee.full_name),
+                            token: Some(token),
+                            nik: Some(employee.nik.clone()),
+                            name: Some(employee.full_name.clone()),
+                            role: Some(employee.role.clone()),
                         });
                     } else {
                         log::warn!("Password mismatch (plaintext fallback) for NIK: {}", req.nik);
@@ -79,28 +107,33 @@ impl AuthViewModel {
         }
     }
 
-    pub async fn update_fcm_token(
-        req: web::Json<FcmTokenRequest>,
-        data: web::Data<AppState>,
-    ) -> Result<LoginResponse, String> {
-        log::info!("Updating FCM token for NIK: {}", req.nik);
-
-        let result = data.db.query("UPDATE employee SET fcm_token = $token WHERE type::string(nik) = type::string($nik)")
-            .bind(("token", req.fcm_token.clone()))
-            .bind(("nik", req.nik.clone()))
-            .await;
-
-        match result {
-            Ok(_) => Ok(LoginResponse {
-                status: "success".to_string(),
-                message: "FCM token updated successfully".to_string(),
-            }),
-            Err(e) => {
-                log::error!("Database error updating FCM token: {}", e);
-                Err("Failed to update token".to_string())
-            }
-        }
-    }
+    // Function ini tidak digunakan karena FCM token sudah di-update saat login
+    // pub async fn update_fcm_token(
+    //     req: web::Json<FcmTokenRequest>,
+    //     data: web::Data<AppState>,
+    // ) -> Result<LoginResponse, String> {
+    //     log::info!("Updating FCM token for NIK: {}", req.nik);
+    //
+    //     let result = data.db.query("UPDATE employee SET fcm_token = $token WHERE type::string(nik) = type::string($nik)")
+    //         .bind(("token", req.fcm_token.clone()))
+    //         .bind(("nik", req.nik.clone()))
+    //         .await;
+    //
+    //     match result {
+    //         Ok(_) => Ok(LoginResponse {
+    //             status: "success".to_string(),
+    //             message: "FCM token updated successfully".to_string(),
+    //             token: None,
+    //             nik: None,
+    //             name: None,
+    //             role: None,
+    //         }),
+    //         Err(e) => {
+    //             log::error!("Database error updating FCM token: {}", e);
+    //             Err("Failed to update token".to_string())
+    //         }
+    //     }
+    // }
 
     pub async fn register(
         req: web::Json<RegisterRequest>,

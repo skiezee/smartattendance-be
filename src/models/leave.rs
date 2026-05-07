@@ -11,11 +11,6 @@ pub struct LeaveRequestPayload {
     pub reason: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct LeaveResponse {
-    pub status: String,
-    pub message: String,
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UpdateLeaveStatusRequest {

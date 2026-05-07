@@ -74,6 +74,7 @@ pub async fn get_wifi_settings(data: web::Data<crate::config::app_state::AppStat
 
 /// Get all WiFi settings (including inactive) - Admin only
 pub async fn get_all_wifi_settings(data: web::Data<crate::config::app_state::AppState>) -> impl Responder {
+    info!("🔵 HANDLER REACHED: get_all_wifi_settings");
     info!("Fetching all WiFi settings (including inactive)");
 
     let query = "SELECT * FROM wifi_settings ORDER BY created_at DESC";

@@ -1,6 +1,5 @@
 use actix_web::web;
 use chrono::{Datelike, Duration, NaiveDate};
-use serde::Deserialize;
 use crate::config::app_state::AppState;
 use crate::models::employee::EmployeeResponse;
 use crate::models::shift_management::*;
