@@ -1,3 +1,4 @@
+pub mod admin_vm;
 pub mod attendance_vm;
 pub mod auth_vm;
 pub mod dashboard_vm;
@@ -6,3 +7,4 @@ pub mod leave_vm;
 pub mod patrol_vm;
 pub mod shift_vm;
 pub mod group_vm;
+pub mod shift_management_vm;

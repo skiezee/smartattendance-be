@@ -50,11 +50,6 @@ pub struct ShiftResponse {
     pub shift_id: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ShiftListResponse {
-    pub status: String,
-    pub data: Vec<ShiftSchedule>,
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ShiftStats {
@@ -62,10 +57,4 @@ pub struct ShiftStats {
     pub completed_shifts: usize,
     pub upcoming_shifts: usize,
     pub cancelled_shifts: usize,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ShiftStatsResponse {
-    pub status: String,
-    pub stats: ShiftStats,
 }

@@ -2,86 +2,86 @@ use serde::{Deserialize, Serialize};
 
 // ─── Raw SurrealDB response structs ───────────────────────────────────────────
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct AttendanceRaw {
-    pub employee_id: Option<serde_json::Value>,
-    pub status: Option<String>,
-    pub late_minutes: Option<i64>,
-    pub work_date: Option<serde_json::Value>,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct AttendanceRaw {
+//     pub employee_id: Option<serde_json::Value>,
+//     pub status: Option<String>,
+//     pub late_minutes: Option<i64>,
+//     pub work_date: Option<serde_json::Value>,
+// }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PatrolSessionRaw {
-    pub employee_id: Option<serde_json::Value>,
-    pub location_id: Option<serde_json::Value>,
-    pub status: Option<String>,
-    pub started_at: Option<serde_json::Value>,
-    pub ended_at: Option<serde_json::Value>,
-    pub duration_minutes: Option<f64>,
-    pub checkpoints_total: Option<i64>,
-    pub checkpoints_visited: Option<i64>,
-    pub checkpoints_missed: Option<i64>,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct PatrolSessionRaw {
+//     pub employee_id: Option<serde_json::Value>,
+//     pub location_id: Option<serde_json::Value>,
+//     pub status: Option<String>,
+//     pub started_at: Option<serde_json::Value>,
+//     pub ended_at: Option<serde_json::Value>,
+//     pub duration_minutes: Option<f64>,
+//     pub checkpoints_total: Option<i64>,
+//     pub checkpoints_visited: Option<i64>,
+//     pub checkpoints_missed: Option<i64>,
+// }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct IncidentRaw {
-    pub id: Option<serde_json::Value>,
-    pub title: Option<String>,
-    pub description: Option<String>,
-    pub severity: Option<String>,
-    pub status: Option<String>,
-    pub nik: Option<String>,
-    pub employee_id: Option<serde_json::Value>,
-    pub latitude: Option<f64>,
-    pub longitude: Option<f64>,
-    pub created_at: Option<String>,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct IncidentRaw {
+//     pub id: Option<serde_json::Value>,
+//     pub title: Option<String>,
+//     pub description: Option<String>,
+//     pub severity: Option<String>,
+//     pub status: Option<String>,
+//     pub nik: Option<String>,
+//     pub employee_id: Option<serde_json::Value>,
+//     pub latitude: Option<f64>,
+//     pub longitude: Option<f64>,
+//     pub created_at: Option<String>,
+// }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct EmployeeRaw {
-    pub id: Option<serde_json::Value>,
-    pub full_name: Option<String>,
-    pub nik: Option<String>,
-    pub department: Option<String>,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct EmployeeRaw {
+//     pub id: Option<serde_json::Value>,
+//     pub full_name: Option<String>,
+//     pub nik: Option<String>,
+//     pub department: Option<String>,
+// }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct WorkLocationRaw {
-    pub id: Option<serde_json::Value>,
-    pub name: Option<String>,
-    pub address: Option<String>,
-    pub latitude: Option<f64>,
-    pub longitude: Option<f64>,
-    pub radius_meters: Option<f64>,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct WorkLocationRaw {
+//     pub id: Option<serde_json::Value>,
+//     pub name: Option<String>,
+//     pub address: Option<String>,
+//     pub latitude: Option<f64>,
+//     pub longitude: Option<f64>,
+//     pub radius_meters: Option<f64>,
+// }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PatrolPerSiteRaw {
-    pub location_id: Option<serde_json::Value>,
-    pub location_name: Option<String>,
-    pub total_patrols: Option<i64>,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct PatrolPerSiteRaw {
+//     pub location_id: Option<serde_json::Value>,
+//     pub location_name: Option<String>,
+//     pub total_patrols: Option<i64>,
+// }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PatrolCompletedPerSiteRaw {
-    pub location_id: Option<serde_json::Value>,
-    pub completed_patrols: Option<i64>,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct PatrolCompletedPerSiteRaw {
+//     pub location_id: Option<serde_json::Value>,
+//     pub completed_patrols: Option<i64>,
+// }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CountResult {
-    pub total: Option<i64>,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct CountResult {
+//     pub total: Option<i64>,
+// }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SumResult {
-    pub total: Option<f64>,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct SumResult {
+//     pub total: Option<f64>,
+// }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MeanResult {
-    pub avg: Option<f64>,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct MeanResult {
+//     pub avg: Option<f64>,
+// }
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
 
@@ -321,11 +321,11 @@ pub struct DashboardData {
     pub location_analytics: LocationAnalytics,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DashboardResponse {
-    pub status: String,
-    pub data: DashboardData,
-}
+// #[derive(Serialize, Deserialize, Debug)]
+// pub struct DashboardResponse {
+//     pub status: String,
+//     pub data: DashboardData,
+// }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DateRangeRequest {

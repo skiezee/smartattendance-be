@@ -103,6 +103,7 @@ pub async fn get_location_boundaries(data: web::Data<crate::config::app_state::A
 
 /// Get all location boundaries (including inactive) - Admin only
 pub async fn get_all_location_boundaries(data: web::Data<crate::config::app_state::AppState>) -> impl Responder {
+    info!("🔵 HANDLER REACHED: get_all_location_boundaries");
     info!("Fetching all location boundaries (including inactive)");
 
     let query = "SELECT * FROM location_boundaries ORDER BY created_at DESC";

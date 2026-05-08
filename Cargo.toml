@@ -22,3 +22,5 @@ yup-oauth2 = "12.1.2"
 rustls = { version = "0.23.39", features = ["ring"] }
 futures-util = "0.3"
 uuid = { version = "1.7", features = ["v4"] }
+jsonwebtoken = "9.2"
+actix-web-httpauth = "0.8"

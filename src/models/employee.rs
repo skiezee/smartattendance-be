@@ -52,16 +52,24 @@ pub struct LoginRequest {
     pub fcm_token: Option<String>,
 }
 
+
 #[derive(Serialize, Deserialize)]
-pub struct FcmTokenRequest {
-    pub nik: String,
-    pub fcm_token: String,
+pub struct RefreshTokenRequest {
+    pub token: String,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct LoginResponse {
     pub status: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nik: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]

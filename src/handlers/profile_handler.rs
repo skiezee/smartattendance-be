@@ -209,38 +209,36 @@ pub async fn update_profile(
         }
     }
     
-    // Build update query
-    let mut updates = Vec::new();
-    
-    if let Some(ref full_name) = req.full_name {
-        updates.push(format!("full_name = '{}'", full_name.replace("'", "''")));
-    }
-    
-    if let Some(ref email) = req.email {
-        updates.push(format!("email = '{}'", email.replace("'", "''")));
-    }
-    
-    if let Some(ref phone_number) = req.phone_number {
-        updates.push(format!("phone_number = '{}'", phone_number.replace("'", "''")));
-    }
-    
-    if let Some(ref profile_photo_url) = req.profile_photo_url {
-        updates.push(format!("profile_photo_url = '{}'", profile_photo_url.replace("'", "''")));
-    }
-    
-    if updates.is_empty() {
+    // Build update query using parameterized bindings to avoid injection issues
+    let mut set_parts: Vec<&str> = Vec::new();
+    let mut has_full_name = false;
+    let mut has_email = false;
+    let mut has_phone = false;
+    let mut has_photo = false;
+
+    if req.full_name.is_some() { set_parts.push("full_name = $full_name"); has_full_name = true; }
+    if req.email.is_some() { set_parts.push("email = $email"); has_email = true; }
+    if req.phone_number.is_some() { set_parts.push("phone_number = $phone_number"); has_phone = true; }
+    if req.profile_photo_url.is_some() { set_parts.push("profile_photo_url = $profile_photo_url"); has_photo = true; }
+
+    if set_parts.is_empty() {
         return HttpResponse::BadRequest().json(json!({
             "status": "error",
             "message": "No fields to update"
         }));
     }
-    
-    updates.push("updated_at = time::now()".to_string());
-    let update_clause = updates.join(", ");
-    
-    let query = format!("UPDATE employee SET {} WHERE nik = $nik", update_clause);
-    
-    match data.db.query(&query).bind(("nik", req.nik.clone())).await {
+
+    set_parts.push("updated_at = time::now()");
+    let update_clause = set_parts.join(", ");
+    let query = format!("UPDATE employee SET {} WHERE nik = $nik RETURN AFTER", update_clause);
+
+    let mut db_query = data.db.query(&query).bind(("nik", req.nik.clone()));
+    if has_full_name { db_query = db_query.bind(("full_name", req.full_name.clone().unwrap_or_default())); }
+    if has_email { db_query = db_query.bind(("email", req.email.clone().unwrap_or_default())); }
+    if has_phone { db_query = db_query.bind(("phone_number", req.phone_number.clone().unwrap_or_default())); }
+    if has_photo { db_query = db_query.bind(("profile_photo_url", req.profile_photo_url.clone().unwrap_or_default())); }
+
+    match db_query.await {
         Ok(_) => {
             info!("Successfully updated profile for NIK: {}", req.nik);
             HttpResponse::Ok().json(json!({

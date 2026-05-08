@@ -1,3 +1,4 @@
+pub mod admin_handler;
 pub mod attendance_handler;
 pub mod auth_handler;
 pub mod dashboard_handler;
@@ -10,4 +11,5 @@ pub mod patrol_handler;
 pub mod profile_handler;
 pub mod shift_handler;
 pub mod wifi_handler;
+pub mod shift_management_handler;
 pub mod group_handler;
